@@ -9,3 +9,15 @@ install_manifest.txt
 compile_commands.json
 CTestTestfile.cmake
 _deps
+CMakeLists.txt
+main.cpp
+build/CPackConfig.cmake
+build/CPackSourceConfig.cmake
+build/DartConfiguration.tcl
+build/smash
+build/.cmake/api/v1/query/client-vscode/query.json
+build/.cmake/api/v1/reply/cache-v2-68850449d91f95cc195c.json
+build/.cmake/api/v1/reply/codemodel-v2-10ff168c24ee3d49855b.json
+build/.cmake/api/v1/reply/index-2021-04-24T08-55-29-0577.json
+build/.cmake/api/v1/reply/target-smash-Debug-69e4d0b2b1dfdb196b3e.json
+build/.cmake/api/v1/reply/toolchains-v1-15950a5d99c693db4404.json
