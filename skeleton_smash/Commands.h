@@ -2,16 +2,21 @@
 #define SMASH_COMMAND_H_
 
 #include <vector>
+#include <set>
 
 #define COMMAND_ARGS_MAX_LENGTH (200)
 #define COMMAND_MAX_ARGS (20)
+
+void _removeBackgroundSign(char *cmd_line);
+bool _isBackgroundCommand(const char *cmd_line);
+void arrayFree(char **arr, int len);
 
 class Command
 {
     // TODO: Add your data members
 public:
-    Command(const char *cmd_line);
-    virtual ~Command();
+    Command() = default;
+    virtual ~Command() = default;
     virtual void execute() = 0;
     //virtual void prepare();
     //virtual void cleanup();
@@ -21,15 +26,15 @@ public:
 class BuiltInCommand : public Command
 {
 public:
-    BuiltInCommand(const char *cmd_line);
-    virtual ~BuiltInCommand() {}
+    BuiltInCommand() = default;
+    virtual ~BuiltInCommand() = default;
 };
 
 class ExternalCommand : public Command
 {
 public:
-    ExternalCommand(const char *cmd_line);
-    virtual ~ExternalCommand() {}
+    ExternalCommand() = default;
+    virtual ~ExternalCommand() = default;
     void execute() override;
 };
 
@@ -113,7 +118,7 @@ class ChpromptCommand : public BuiltInCommand
 {
     std::string new_prompt;
 public:
-    ChpromptCommand(const char *cmd_line, JobsList *jobs);
+    ChpromptCommand(const char *cmd_line);
     virtual ~ChpromptCommand() {}
     void execute() override;
 };
@@ -162,13 +167,15 @@ public:
     void execute() override;
 };
 
+//*****************SMASH CLASS*****************//
 class SmallShell
 {
 private:
     // TODO: Add your data members
     std::string prompt;
-
-    SmallShell() : prompt("smash") {}
+    const std::set<std::string> builtin_set;
+    SmallShell() : prompt("smash"), 
+    builtin_set({"chprompt", "showpid", "pwd", "cd", "jobs", "kill", "fg", "bg", "quit", "cat"}) {} //TODO: Consider adding timeout
 
 public:
     Command *CreateCommand(const char *cmd_line);
@@ -186,6 +193,8 @@ public:
 
     const std::string& getPrompt() const; // get the prompt
     void setPrompt(const std::string& new_prompt); // set the prompt to new_prompt
+
+    bool isBuiltIn(const char* cmd_line) const;
 };
 
 #endif //SMASH_COMMAND_H_
