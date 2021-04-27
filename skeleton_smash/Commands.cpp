@@ -330,7 +330,22 @@ void arrayFree(char **arr, int len)
 }
 
 //******************COMMAND CLASSES*****************//
-ChpromptCommand::ChpromptCommand(const char *cmd_line)
+const std::string& Command::getCmdLine() const
+{
+    return cmd_text;
+}
+
+int Command::getPid() const
+{
+    return pid;
+}
+
+bool Command::isBackground() const
+{
+    return is_background;
+}
+
+ChpromptCommand::ChpromptCommand(const char *cmd_line) : BuiltInCommand(cmd_line)
 {
     char *args[COMMAND_MAX_ARGS];
     int n;
@@ -371,4 +386,149 @@ bool SmallShell::isBuiltIn(const char* cmd_line) const
         return true;
     }
     return false;
+}
+
+//*************JOBSLIST IMPLEMENTATION*************//
+void JobsList::addJob(Command *cmd, bool isStopped)
+{
+    /*
+        struct JobEntry
+        {
+            int job_id;
+            int pid;
+            std::string command;
+            time_t start_time;
+            j_state state;
+            bool background;
+        };
+    */
+    int job_id;
+    if(jobs.size() == 0) // In case there are no current jobs running.
+    {
+        job_id = 1;
+    }
+    else // Otherwise: max job_id + 1
+    {
+        job_id = jobs.rbegin()->first + 1;
+    }
+    int pid = cmd->getPid();
+    std::string command = cmd->getCmdLine();
+    time_t start_time = time(NULL);
+    j_state state = isStopped? j_state::STOPPED : j_state::RUNNING;
+    bool is_background = cmd->isBackground();
+    JobEntry jcb = {job_id, pid, command, start_time, state, is_background}; // Create the JCB template.
+    jobs[job_id] = std::make_shared<JobEntry>(jcb); // Add the new job to the jobs map. (AS A SHARED_PTR)
+}
+
+void JobsList::updateAllJobs()
+{
+    int status;
+    for(auto& pair : jobs)
+    {
+        std::shared_ptr<JobEntry>& jcb = pair.second;
+        status = 0;
+        if(waitpid(jcb->pid, &status, WUNTRACED | WNOHANG) > 0) // If the job is dead, remove it.
+        {
+            if(WIFSTOPPED(status)) // If job is just stopped, update it's status.
+            {
+                jcb->state = j_state::STOPPED;
+            }
+            else // The job is dead, so remove it from the job container.
+            {
+                jobs.erase(jcb->job_id);
+            }
+        }
+    }
+}
+
+void JobsList::printJobsList()// TODO: check how to print a dead job
+{
+    updateAllJobs();
+    for(auto& pair : jobs)
+    {
+        std::shared_ptr<JobEntry>& jcb = pair.second;
+        std::cout << "[" << jcb->job_id << "]" << jcb->command << " : " << jcb->pid << " " << difftime(time(NULL), jcb->start_time) << "secs" \
+            << (jcb->state == j_state::STOPPED)? " (stopped)\n" : "\n";
+    }
+}
+
+void JobsList::killAllJobs(bool print)
+{
+    updateAllJobs();
+    if(print)
+    {
+        std::cout << "smash: sending SIGKILL signal to " << jobs.size() << " jobs:\n";
+        for(auto& pair : jobs)
+        {
+            if(kill(pair.second->pid, SIGKILL) == -1)
+            {
+                perror("smash error: kill failed");
+            }
+            else
+            {
+                jobs.erase(pair.first); // Erase the job from the jobs map on success
+            }
+        }
+    }
+}
+
+std::shared_ptr<JobEntry> JobsList::getJobById(int jobId)
+{
+    updateAllJobs();
+    if(jobs.count(jobId))
+    {
+        return jobs[jobId];
+    }
+    return nullptr;
+   
+}
+
+void JobsList::killJobById(int jobId, bool to_update)
+{
+    if(to_update) updateAllJobs();
+
+    if(jobs.count(jobId))
+    {
+        std::shared_ptr<JobEntry> jcb = jobs[jobId];
+        if(kill(jcb->pid, SIGKILL) == -1)
+        {
+            perror("smash error: kill failed");
+        }
+        else
+        {
+            jobs.erase(jcb->job_id); // Erase the job from the jobs map on success
+        }
+        
+    }
+}
+
+std::shared_ptr<JobEntry> JobsList::getLastJob(int *lastJobId = NULL)
+{
+    updateAllJobs();
+    auto last = jobs.rbegin();
+    if(last==jobs.rend())
+    {
+        return nullptr;
+    }
+    if(lastJobId)
+    {
+        *lastJobId = last->first;
+    }
+    return last->second;
+}
+
+std::shared_ptr<JobEntry> JobsList::getLastStoppedJob(int *jobId = NULL)
+{
+    updateAllJobs();
+    auto last = jobs.rbegin();
+    if(last == jobs.rend())
+    {
+        return nullptr;
+    }
+    while(last->second->state != j_state::STOPPED) last++;
+    if(jobId)
+    {
+        *jobId = last->first;
+    }
+    return last->second;
 }

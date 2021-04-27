@@ -1,8 +1,12 @@
 #ifndef SMASH_COMMAND_H_
 #define SMASH_COMMAND_H_
 
+#include <memory>
 #include <vector>
 #include <set>
+#include <time.h>
+#include <map>
+#include <list>
 
 #define COMMAND_ARGS_MAX_LENGTH (200)
 #define COMMAND_MAX_ARGS (20)
@@ -13,11 +17,20 @@ void arrayFree(char **arr, int len);
 
 class Command
 {
-    // TODO: Add your data members
+    std::string cmd_text;
+
+protected:
+    int pid = 0;
+    bool is_background = false;
+
 public:
-    Command() = default;
+    Command(const char* cmd_line, bool is_background, int pid = 0) : 
+    cmd_text(cmd_line), pid(pid), is_background(is_background) { }
     virtual ~Command() = default;
     virtual void execute() = 0;
+    virtual const std::string& getCmdLine() const;
+    virtual int getPid() const;
+    virtual bool isBackground() const;
     //virtual void prepare();
     //virtual void cleanup();
     // TODO: Add your extra methods if needed
@@ -26,14 +39,14 @@ public:
 class BuiltInCommand : public Command
 {
 public:
-    BuiltInCommand() = default;
+    BuiltInCommand(const char* cmd_line) : Command(cmd_line, false) { }
     virtual ~BuiltInCommand() = default;
 };
 
 class ExternalCommand : public Command
 {
 public:
-    ExternalCommand() = default;
+    ExternalCommand(const char* cmd_line, bool is_background, int pid) : Command(cmd_line, is_background, pid) { }
     virtual ~ExternalCommand() = default;
     void execute() override;
 };
@@ -92,27 +105,41 @@ class QuitCommand : public BuiltInCommand
     void execute() override;
 };
 
+//******************JOBSLIST DATA STRUCTURE******************//
+
+enum j_state
+{
+	RUNNING, STOPPED, ZOMBIE
+};
+
+struct JobEntry
+{
+    int job_id;
+    int pid;
+    std::string command;
+    time_t start_time;
+    j_state state;
+    bool is_background;
+};
+
 class JobsList
 {
+    std::map<int, std::shared_ptr<JobEntry>> jobs;
+
 public:
-    class JobEntry
-    {
-        // TODO: Add your data members
-    };
-    // TODO: Add your data members
-public:
-    JobsList();
-    ~JobsList();
+    JobsList() = default;
+    ~JobsList() = default;
     void addJob(Command *cmd, bool isStopped = false);
+    void updateAllJobs();
     void printJobsList();
-    void killAllJobs();
-    void removeFinishedJobs();
-    JobEntry *getJobById(int jobId);
-    void removeJobById(int jobId);
-    JobEntry *getLastJob(int *lastJobId);
-    JobEntry *getLastStoppedJob(int *jobId);
+    void killAllJobs(bool print=true);
+    std::shared_ptr<JobEntry> getJobById(int jobId);
+    void killJobById(int jobId, bool to_update = true);
+    std::shared_ptr<JobEntry> getLastJob(int *lastJobId);
+    std::shared_ptr<JobEntry> getLastStoppedJob(int *jobId);
     // TODO: Add extra methods or modify exisitng ones as needed
 };
+//***********************************************************//
 
 class ChpromptCommand : public BuiltInCommand
 {
