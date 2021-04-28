@@ -33,7 +33,6 @@ public:
     virtual bool isBackground() const;
     //virtual void prepare();
     //virtual void cleanup();
-    // TODO: Add your extra methods if needed
 };
 
 class BuiltInCommand : public Command
@@ -43,7 +42,7 @@ public:
     virtual ~BuiltInCommand() = default;
 };
 
-class ExternalCommand : public Command
+class ExternalCommand : public Command // TODO: external commands handler
 {
 public:
     ExternalCommand(const char* cmd_line, bool is_background, int pid) : Command(cmd_line, is_background, pid) { }
@@ -53,7 +52,7 @@ public:
 
 class PipeCommand : public Command
 {
-    // TODO: Add your data members
+    // TODO: pipe
 public:
     PipeCommand(const char *cmd_line);
     virtual ~PipeCommand() {}
@@ -62,7 +61,7 @@ public:
 
 class RedirectionCommand : public Command
 {
-    // TODO: Add your data members
+    // TODO: Redirection - Output redirection
 public:
     explicit RedirectionCommand(const char *cmd_line);
     virtual ~RedirectionCommand() {}
@@ -71,15 +70,16 @@ public:
     //void cleanup() override;
 };
 
-class ChangeDirCommand : public BuiltInCommand
+class ChangeDirCommand : public BuiltInCommand // TODO: cd
 {
-    // TODO: Add your data members public:
+    
+public:
     ChangeDirCommand(const char *cmd_line, char **plastPwd);
     virtual ~ChangeDirCommand() {}
     void execute() override;
 };
 
-class GetCurrDirCommand : public BuiltInCommand
+class GetCurrDirCommand : public BuiltInCommand // TODO: pwd
 {
 public:
     GetCurrDirCommand(const char *cmd_line);
@@ -87,7 +87,7 @@ public:
     void execute() override;
 };
 
-class ShowPidCommand : public BuiltInCommand
+class ShowPidCommand : public BuiltInCommand // TODO: showpid
 {
 public:
     ShowPidCommand(const char *cmd_line);
@@ -95,11 +95,11 @@ public:
     void execute() override;
 };
 
-class JobsList; // TODO: Make a Job list data structure
+class JobsList;
 
 class QuitCommand : public BuiltInCommand
 {
-    // TODO: Add your data members public:
+    // TODO: quit
     QuitCommand(const char *cmd_line, JobsList *jobs);
     virtual ~QuitCommand() {}
     void execute() override;
@@ -137,11 +137,10 @@ public:
     void killJobById(int jobId, bool to_update = true);
     std::shared_ptr<JobEntry> getLastJob(int *lastJobId);
     std::shared_ptr<JobEntry> getLastStoppedJob(int *jobId);
-    // TODO: Add extra methods or modify exisitng ones as needed
 };
 //***********************************************************//
 
-class ChpromptCommand : public BuiltInCommand
+class ChpromptCommand : public BuiltInCommand // DONE: chprompt
 {
     std::string new_prompt;
 public:
@@ -152,7 +151,7 @@ public:
 
 class JobsCommand : public BuiltInCommand
 {
-    // TODO: Add your data members
+    // TODO: jobs
 public:
     JobsCommand(const char *cmd_line, JobsList *jobs);
     virtual ~JobsCommand() {}
@@ -161,7 +160,7 @@ public:
 
 class KillCommand : public BuiltInCommand
 {
-    // TODO: Add your data members
+    // TODO: kill
 public:
     KillCommand(const char *cmd_line, JobsList *jobs);
     virtual ~KillCommand() {}
@@ -170,7 +169,7 @@ public:
 
 class ForegroundCommand : public BuiltInCommand
 {
-    // TODO: Add your data members
+    // TODO: fg
 public:
     ForegroundCommand(const char *cmd_line, JobsList *jobs);
     virtual ~ForegroundCommand() {}
@@ -179,7 +178,7 @@ public:
 
 class BackgroundCommand : public BuiltInCommand
 {
-    // TODO: Add your data members
+    // TODO: bg
 public:
     BackgroundCommand(const char *cmd_line, JobsList *jobs);
     virtual ~BackgroundCommand() {}
@@ -198,7 +197,7 @@ public:
 class SmallShell
 {
 private:
-    // TODO: Add your data members
+    // TODO: SmallShell: add methods if needed
     std::string prompt;
     const std::set<std::string> builtin_set;
     SmallShell() : prompt("smash"), 
@@ -216,11 +215,9 @@ public:
     }
     ~SmallShell();
     void executeCommand(const char *cmd_line);
-    // TODO: add extra methods as needed
 
     const std::string& getPrompt() const; // get the prompt
     void setPrompt(const std::string& new_prompt); // set the prompt to new_prompt
-
     bool isBuiltIn(const char* cmd_line) const;
 };
 

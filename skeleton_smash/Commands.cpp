@@ -6,6 +6,7 @@
 #include <sys/wait.h>
 #include <iomanip>
 #include "Commands.h"
+#include "Exceptions.h"
 
 using namespace std;
 
@@ -441,7 +442,7 @@ void JobsList::updateAllJobs()
     }
 }
 
-void JobsList::printJobsList()// TODO: check how to print a dead job
+void JobsList::printJobsList()
 {
     updateAllJobs();
     for(auto& pair : jobs)
@@ -458,16 +459,16 @@ void JobsList::killAllJobs(bool print)
     if(print)
     {
         std::cout << "smash: sending SIGKILL signal to " << jobs.size() << " jobs:\n";
-        for(auto& pair : jobs)
+    }
+    for(auto& pair : jobs)
+    {
+        if(kill(pair.second->pid, SIGKILL) == -1)
         {
-            if(kill(pair.second->pid, SIGKILL) == -1)
-            {
-                perror("smash error: kill failed");
-            }
-            else
-            {
-                jobs.erase(pair.first); // Erase the job from the jobs map on success
-            }
+            perror("smash error: kill failed");
+        }
+        else
+        {
+            jobs.erase(pair.first); // Erase the job from the jobs map on success
         }
     }
 }
