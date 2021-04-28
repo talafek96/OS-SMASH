@@ -24,8 +24,7 @@ using namespace std;
 enum class CMD_Type
 {
     Normal, Background, Pipe, ErrPipe,
-    OutRed, OutAppend, InRed,
-    InAppend
+    OutRed, OutAppend
 };
 
 const std::string WHITESPACE = " \n\r\t\f\v";
@@ -71,7 +70,7 @@ CMD_Type _processCommandLine(const char* cmd_line, char** args = nullptr, int* a
 {
     CMD_Type res = CMD_Type::Normal;
     std::string cmd(cmd_line);
-    std::size_t pos = cmd.find_first_of("><|"); 
+    std::size_t pos = cmd.find_first_of(">|"); 
     if(pos != std::string::npos)
     {
         char oper[2];
@@ -92,22 +91,6 @@ CMD_Type _processCommandLine(const char* cmd_line, char** args = nullptr, int* a
                 else
                 {
                     res = CMD_Type::OutRed;
-                    goto SingleOp;
-                }
-                break;
-            }
-            case '<':
-            {
-                oper[0] = '<';
-                if(cmd[pos+1] == '<')
-                {
-                    oper[1] = '<';
-                    res = CMD_Type::InAppend;
-                    goto DoubleOp;
-                }
-                else
-                {
-                    res = CMD_Type::InRed;
                     goto SingleOp;
                 }
                 break;
@@ -243,7 +226,7 @@ SmallShell::~SmallShell()
 /**
 * Creates and returns a pointer to Command class which matches the given command line (cmd_line)
 */
-Command *SmallShell::CreateCommand(const char *cmd_line)
+Command* SmallShell::CreateCommand(const char *cmd_line)
 {
     // For example:
     /*
@@ -262,15 +245,6 @@ Command *SmallShell::CreateCommand(const char *cmd_line)
     return new ExternalCommand(cmd_line);
   }
   */
-    // string cmd_s = _trim(string(cmd_line));
-    // string firstWord = cmd_s.substr(0, cmd_s.find_first_of(" \n"));
-    // if(firstWord.compare("chprompt") == 0)
-    // {
-    //     char *args[COMMAND_MAX_ARGS];
-    //     int n = _parseCommandLine(cmd_line, args);
-
-    //     arrayFree(args, n); // TODO: make an array delete function
-    // }
     char *args[COMMAND_MAX_ARGS];
     int args_num;
     CMD_Type type = _processCommandLine(cmd_line, args, &args_num);
@@ -281,7 +255,23 @@ Command *SmallShell::CreateCommand(const char *cmd_line)
             std::string first_arg(args[0]);
             if(!first_arg.compare("chprompt"))
             {
+                arrayFree(args, args_num);
                 return new ChpromptCommand(cmd_line);
+            }
+            else if(!first_arg.compare("quit"))
+            {
+                arrayFree(args, args_num);
+                return new QuitCommand(cmd_line, SmallShell::getInstance().getJobsList());
+            }
+            else if(!first_arg.compare("showpid"))
+            {
+                arrayFree(args, args_num);
+                return new ShowPidCommand(cmd_line);
+            }
+            else if(!first_arg.compare("pwd"))
+            {
+                arrayFree(args, args_num);
+                return new GetCurrDirCommand(cmd_line);
             }
             break;
         }
@@ -367,6 +357,53 @@ void ChpromptCommand::execute() // chprompt exec
     SmallShell::getInstance().setPrompt(new_prompt);
 }
 
+QuitCommand::QuitCommand(const char *cmd_line, std::shared_ptr<JobsList> jobs) : BuiltInCommand(cmd_line), jobs(jobs)
+{
+    char *args[COMMAND_MAX_ARGS];
+    int n;
+    _processCommandLine(cmd_line, args, &n);
+    if (n > 1) //there is another argument after quit
+    {
+        if(!static_cast<std::string>("kill").compare(args[1]))
+        {
+            is_kill = true;
+        }
+    }
+    arrayFree(args, n);
+}
+
+
+void QuitCommand::execute()
+{
+    if(is_kill)
+    {
+        jobs->killAllJobs();
+    }
+    SmallShell::getInstance().quit_flag = true;
+}
+
+ShowPidCommand::ShowPidCommand(const char *cmd_line) : BuiltInCommand(cmd_line) { }
+
+void ShowPidCommand::execute()
+{
+    std::cout << "smash pid is " << getpid() << " " << std::endl;
+}
+
+GetCurrDirCommand::GetCurrDirCommand(const char* cmd_line) : BuiltInCommand(cmd_line) { }
+
+void GetCurrDirCommand::execute()
+{
+    char buff[COMMAND_ARGS_MAX_LENGTH];
+    if(getcwd(buff, COMMAND_ARGS_MAX_LENGTH) == NULL)
+    {
+        std::cerr << SyscallError("getcwd").what() << std::endl;
+    }
+    else
+    {
+        std::cout << buff << std::endl;
+    }
+}
+
 //***************SMASH IMPLEMENTATION***************//
 const std::string& SmallShell::getPrompt() const
 {
@@ -387,6 +424,16 @@ bool SmallShell::isBuiltIn(const char* cmd_line) const
         return true;
     }
     return false;
+}
+
+bool SmallShell::getQuitFlag() const
+{
+    return quit_flag;
+}
+
+std::shared_ptr<JobsList> SmallShell::getJobsList()
+{
+    return jobs;
 }
 
 //*************JOBSLIST IMPLEMENTATION*************//

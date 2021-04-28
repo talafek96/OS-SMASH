@@ -79,16 +79,17 @@ public:
     void execute() override;
 };
 
-class GetCurrDirCommand : public BuiltInCommand // TODO: pwd
+class GetCurrDirCommand : public BuiltInCommand // DONE: pwd
 {
 public:
     GetCurrDirCommand(const char *cmd_line);
     virtual ~GetCurrDirCommand() {}
     void execute() override;
-};
+}; 
 
-class ShowPidCommand : public BuiltInCommand // TODO: showpid
+class ShowPidCommand : public BuiltInCommand // DONE: showpid
 {
+    pid_t pid;
 public:
     ShowPidCommand(const char *cmd_line);
     virtual ~ShowPidCommand() {}
@@ -97,10 +98,12 @@ public:
 
 class JobsList;
 
-class QuitCommand : public BuiltInCommand
+class QuitCommand : public BuiltInCommand // DONE: quit
 {
-    // TODO: quit
-    QuitCommand(const char *cmd_line, JobsList *jobs);
+    bool is_kill=false;
+    std::shared_ptr<JobsList> jobs;
+public:
+    QuitCommand(const char *cmd_line, std::shared_ptr<JobsList> jobs);
     virtual ~QuitCommand() {}
     void execute() override;
 };
@@ -185,7 +188,7 @@ public:
     void execute() override;
 };
 
-class CatCommand : public BuiltInCommand
+class CatCommand : public BuiltInCommand // TODO: cat
 {
 public:
     CatCommand(const char *cmd_line);
@@ -197,11 +200,15 @@ public:
 class SmallShell
 {
 private:
-    // TODO: SmallShell: add methods if needed
     std::string prompt;
+    bool quit_flag = false;
     const std::set<std::string> builtin_set;
-    SmallShell() : prompt("smash"), 
-    builtin_set({"chprompt", "showpid", "pwd", "cd", "jobs", "kill", "fg", "bg", "quit", "cat"}) {} //TODO: Consider adding timeout
+    std::shared_ptr<JobsList> jobs;
+
+    SmallShell() : prompt("smash"), quit_flag(false), jobs(std::make_shared<JobsList>(JobsList())),
+    builtin_set({"chprompt", "showpid", "pwd", "cd", "jobs", "kill", "fg", "bg", "quit", "cat"}) {} //TODO: SmallShell: Consider adding timeout
+
+    friend QuitCommand;
 
 public:
     Command *CreateCommand(const char *cmd_line);
@@ -216,9 +223,11 @@ public:
     ~SmallShell();
     void executeCommand(const char *cmd_line);
 
+    std::shared_ptr<JobsList> getJobsList();
     const std::string& getPrompt() const; // get the prompt
     void setPrompt(const std::string& new_prompt); // set the prompt to new_prompt
     bool isBuiltIn(const char* cmd_line) const;
+    bool getQuitFlag() const;
 };
 
 #endif //SMASH_COMMAND_H_

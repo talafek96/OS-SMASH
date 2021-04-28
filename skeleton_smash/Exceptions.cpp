@@ -5,7 +5,7 @@
 /*********************************/
 Exception::Exception() :
 intro("smash error: "), message("Unknown error.") { }
-const char* Exception::what() const
+const char* Exception::what() const noexcept
 {
     return message.c_str();
 }
