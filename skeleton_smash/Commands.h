@@ -14,6 +14,8 @@
 void _removeBackgroundSign(char *cmd_line);
 bool _isBackgroundCommand(const char *cmd_line);
 void arrayFree(char **arr, int len);
+bool isNumber(const std::string& str);
+bool extractIntFlag(const std::string& str, int* flag_num);
 
 class Command
 {
@@ -70,11 +72,13 @@ public:
     //void cleanup() override;
 };
 
-class ChangeDirCommand : public BuiltInCommand // TODO: cd
+class ChangeDirCommand : public BuiltInCommand // DONE: cd
 {
+    bool minus_arg = false;
+    std::string pathname;
     
 public:
-    ChangeDirCommand(const char *cmd_line, char **plastPwd);
+    ChangeDirCommand(const char *cmd_line);
     virtual ~ChangeDirCommand() {}
     void execute() override;
 };
@@ -152,21 +156,25 @@ public:
     void execute() override;
 };
 
-class JobsCommand : public BuiltInCommand
+class JobsCommand : public BuiltInCommand // DONE: jobs
 {
-    // TODO: jobs
+    std::shared_ptr<JobsList> jobs;
+
 public:
-    JobsCommand(const char *cmd_line, JobsList *jobs);
+    JobsCommand(const char *cmd_line, std::shared_ptr<JobsList> jobs);
     virtual ~JobsCommand() {}
     void execute() override;
 };
 
-class KillCommand : public BuiltInCommand
+class KillCommand : public BuiltInCommand // DONE: kill
 {
-    // TODO: kill
+    int signum;
+    int job_id;
+    std::shared_ptr<JobsList> jobs;
+
 public:
-    KillCommand(const char *cmd_line, JobsList *jobs);
-    virtual ~KillCommand() {}
+    KillCommand(const char *cmd_line, int signum, int job_id, std::shared_ptr<JobsList> jobs);
+    virtual ~KillCommand() { }
     void execute() override;
 };
 
@@ -202,13 +210,17 @@ class SmallShell
 private:
     std::string prompt;
     bool quit_flag = false;
-    const std::set<std::string> builtin_set;
+    std::string last_pwd;
     std::shared_ptr<JobsList> jobs;
+    const std::set<std::string> builtin_set;
 
-    SmallShell() : prompt("smash"), quit_flag(false), jobs(std::make_shared<JobsList>(JobsList())),
+    SmallShell() : prompt("smash"), quit_flag(false), last_pwd(last_pwd), jobs(std::make_shared<JobsList>(JobsList())),
     builtin_set({"chprompt", "showpid", "pwd", "cd", "jobs", "kill", "fg", "bg", "quit", "cat"}) {} //TODO: SmallShell: Consider adding timeout
+    
+    void setLastPwd(const std::string& new_pwd);
 
     friend QuitCommand;
+    friend ChangeDirCommand;
 
 public:
     Command *CreateCommand(const char *cmd_line);
@@ -228,6 +240,9 @@ public:
     void setPrompt(const std::string& new_prompt); // set the prompt to new_prompt
     bool isBuiltIn(const char* cmd_line) const;
     bool getQuitFlag() const;
+
+    bool isPwdSet() const;
+    const std::string& getLastPwd() const;
 };
 
 #endif //SMASH_COMMAND_H_

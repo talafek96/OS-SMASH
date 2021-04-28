@@ -218,9 +218,19 @@ void _removeBackgroundSign(char *cmd_line)
 
 // TODO: Add your implementation for classes in Commands.h
 
-SmallShell::~SmallShell()
+bool SmallShell::isPwdSet() const
 {
-    // TODO: add your implementation
+    return last_pwd.empty();
+}
+
+void SmallShell::setLastPwd(const std::string& new_pwd)
+{
+    last_pwd = new_pwd;
+}
+
+const std::string& SmallShell::getLastPwd() const
+{
+    return last_pwd;
 }
 
 /**
@@ -273,6 +283,59 @@ Command* SmallShell::CreateCommand(const char *cmd_line)
                 arrayFree(args, args_num);
                 return new GetCurrDirCommand(cmd_line);
             }
+            else if(!first_arg.compare("jobs"))
+            {
+                arrayFree(args, args_num);
+                return new JobsCommand(cmd_line, SmallShell::getInstance().getJobsList());
+            }
+            else if(!first_arg.compare("kill"))
+            {
+                if(!args[1] || !args[2] || args[3] \
+                || args[1][1] == '\0' || !isNumber(std::string(args[2]))) // Check correctness of the arguments
+                {
+                    arrayFree(args, args_num);
+                    throw InvalidArgs("kill");
+                }
+                int signum = 0, job_id = 0;
+                bool res = extractIntFlag(args[1], &signum); // Check and extract the flag arg
+                if(!res)
+                {
+                    arrayFree(args, args_num);
+                    throw InvalidArgs("kill");
+                }
+                std::istringstream arg3(args[2]);
+                arg3 >> job_id; // Extract the job id
+                if(SmallShell::getInstance().getJobsList()->getJobById(job_id) == nullptr) // Check if the job currently exists
+                {
+                    arrayFree(args, args_num);
+                    throw JobDoesNotExist("kill", job_id);
+                }
+                arrayFree(args, args_num);
+                return new KillCommand(cmd_line, signum, job_id, SmallShell::getInstance().getJobsList());
+            }
+            else if(!first_arg.compare("cd"))
+            {
+                if (args_num > 2)
+                {
+                    arrayFree(args, args_num);
+                    throw TooManyArgs("cd");
+                }
+                else if (args_num==2)
+                {
+                    if (SmallShell::getInstance().getLastPwd().empty() && (!static_cast<std::string>("-").compare(args[1])))
+                    {
+                        arrayFree(args, args_num);
+                        throw OldPwdNotSet("cd");
+                    }
+                    
+                    arrayFree(args, args_num);
+                    return new ChangeDirCommand(cmd_line);
+                }
+                else
+                {
+                    return nullptr;
+                }
+            }
             break;
         }
         default: // Should not get here.
@@ -284,11 +347,7 @@ Command* SmallShell::CreateCommand(const char *cmd_line)
 
 void SmallShell::executeCommand(const char *cmd_line)
 {
-    // TODO: Add your implementation here
-    // for example:
-    // Command* cmd = CreateCommand(cmd_line);
-    // cmd->execute();
-    // Please note that you must fork smash process for some commands (e.g., external commands....)
+    SmallShell::getInstance().getJobsList()->updateAllJobs(); // Update all the jobs upon execution
     CMD_Type type = _processCommandLine(cmd_line);
     switch(type)
     {
@@ -297,8 +356,17 @@ void SmallShell::executeCommand(const char *cmd_line)
             if(isBuiltIn(cmd_line))
             {
                 Command* cmd = CreateCommand(cmd_line);
-                cmd->execute();
-                delete cmd;
+                if(cmd != nullptr)
+                {
+                    try
+                    {
+                        cmd->execute();
+                    }
+                    catch(const std::exception& e)
+                    {
+                        std::cerr << e.what() << '\n';
+                    }
+                }
             }
             else
             {
@@ -318,6 +386,47 @@ void arrayFree(char **arr, int len)
     {
         free(arr[i]);
     }
+}
+
+bool isNumber(const std::string& str)
+{
+    int i = 0;
+    for (char const& c : str) 
+    {
+        if(i++ == 0)
+        {
+            if(c == '-')
+            {
+                continue;
+            }
+        }
+        if (std::isdigit(c) == 0) 
+        {
+            return false;
+        }
+    }
+    return true;
+}
+
+/**
+ * Extracts the flag from the given string if it is a valid flag format.
+ * Returns true if it is a valid flag and puts the flag in flag_num (if no NULL),
+ * Otherwise returns false.
+ */
+bool extractIntFlag(const std::string& str, int* flag_num)
+{
+    std::string s1(_trim(str));
+    std::istringstream ss(s1.c_str());
+    char c = ss.get();
+    if(c != '-' || !isNumber(s1.substr(1)))
+    {
+        return false;
+    }
+    if(flag_num)
+    {
+        ss >> *flag_num;
+    }
+    return true;
 }
 
 //******************COMMAND CLASSES*****************//
@@ -404,7 +513,70 @@ void GetCurrDirCommand::execute()
     }
 }
 
+ChangeDirCommand::ChangeDirCommand(const char *cmd_line): BuiltInCommand(cmd_line)
+{
+    char *args[COMMAND_MAX_ARGS];
+    int n;
+    _processCommandLine(cmd_line, args, &n);
+    pathname = args[1];
+    arrayFree(args, n);
+}
+
+void ChangeDirCommand::execute()
+{
+    char current[COMMAND_ARGS_MAX_LENGTH];
+    if (!static_cast<std::string>("-").compare(pathname))
+    {
+        if(getcwd(current, COMMAND_ARGS_MAX_LENGTH) == NULL)
+        {
+            throw SyscallError("getcwd");
+        }
+        if (chdir((SmallShell::getInstance().getLastPwd()).c_str()) == -1) // Attempt to change the dir to the previous one
+        {
+            throw SyscallError("chdir");
+        }
+        // On success, replace the previous dir with the current one (on the smash memory)
+        
+        SmallShell::getInstance().setLastPwd(current);
+    }
+    else
+    {
+        if(getcwd(current, COMMAND_ARGS_MAX_LENGTH) == NULL)
+        {
+            throw SyscallError("getcwd");
+        }
+        if ((chdir(pathname.c_str()))==-1)
+        {
+            throw SyscallError("chdir");
+        }
+        SmallShell::getInstance().setLastPwd(current);
+    }
+}
+
+JobsCommand::JobsCommand(const char *cmd_line, std::shared_ptr<JobsList> jobs) : BuiltInCommand(cmd_line), jobs(jobs) { }
+
+void JobsCommand::execute()
+{
+    jobs->printJobsList();
+}
+
+KillCommand::KillCommand(const char *cmd_line, int signum, int job_id, std::shared_ptr<JobsList> jobs) :
+BuiltInCommand(cmd_line), signum(signum), job_id(job_id), jobs(jobs) { }
+
+void KillCommand::execute()
+{
+    if(kill(jobs->getJobById(job_id)->pid, signum) == -1)
+    {
+        perror("smash error: kill failed");
+    }
+}
+
 //***************SMASH IMPLEMENTATION***************//
+SmallShell::~SmallShell()
+{
+    // TODO: add your implementation
+}
+
 const std::string& SmallShell::getPrompt() const
 {
     return prompt;
@@ -492,10 +664,11 @@ void JobsList::updateAllJobs()
 void JobsList::printJobsList()
 {
     updateAllJobs();
+    auto now = time(NULL);
     for(auto& pair : jobs)
     {
         std::shared_ptr<JobEntry>& jcb = pair.second;
-        std::cout << "[" << jcb->job_id << "]" << jcb->command << " : " << jcb->pid << " " << difftime(time(NULL), jcb->start_time) << "secs" \
+        std::cout << "[" << jcb->job_id << "]" << jcb->command << " : " << jcb->pid << " " << difftime(now, jcb->start_time) << "secs" \
             << (jcb->state == j_state::STOPPED)? " (stopped)\n" : "\n";
     }
 }
