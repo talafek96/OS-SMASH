@@ -43,7 +43,7 @@ public:
     virtual ~BuiltInCommand() = default;
 };
 
-class ExternalCommand : public Command // TODO: external commands handler
+class ExternalCommand : public Command // DONE: external commands handler
 {
     bool is_background;
     std::string stripped_cmd;
@@ -143,7 +143,7 @@ public:
     void printJobsList();
     void killAllJobs(bool print=true);
     std::shared_ptr<JobEntry> getJobById(int jobId);
-    void killJobById(int jobId, bool to_update = true);
+    bool killJobById(int jobId, bool to_update = true);
     std::shared_ptr<JobEntry> getLastJob(int *lastJobId);
     std::shared_ptr<JobEntry> getLastStoppedJob(int *jobId);
 };
@@ -214,15 +214,18 @@ private:
     bool quit_flag = false;
     std::string last_pwd;
     std::shared_ptr<JobsList> jobs;
-    const std::set<std::string> builtin_set;
+    int fg_job_id;
 
-    SmallShell() : prompt("smash"), quit_flag(false), last_pwd(last_pwd), jobs(std::make_shared<JobsList>(JobsList())),
+    const std::set<std::string> builtin_set;
+    
+    SmallShell() : prompt("smash"), quit_flag(false), last_pwd(last_pwd), jobs(std::make_shared<JobsList>(JobsList())), fg_job_id(0),
     builtin_set({"chprompt", "showpid", "pwd", "cd", "jobs", "kill", "fg", "bg", "quit", "cat"}) {} //TODO: SmallShell: Consider adding timeout
     
     void setLastPwd(const std::string& new_pwd);
 
     friend QuitCommand;
     friend ChangeDirCommand;
+    friend JobsList;
 
 public:
     Command *CreateCommand(const char *cmd_line);
@@ -245,6 +248,7 @@ public:
 
     bool isPwdSet() const;
     const std::string& getLastPwd() const;
+    int getCurrentFg() const;
 };
 
 #endif //SMASH_COMMAND_H_

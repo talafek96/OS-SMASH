@@ -683,6 +683,11 @@ std::shared_ptr<JobsList> SmallShell::getJobsList()
     return jobs;
 }
 
+int SmallShell::getCurrentFg() const
+{
+    return fg_job_id;
+}
+
 //*************JOBSLIST IMPLEMENTATION*************//
 void JobsList::addJob(Command *cmd, bool isStopped)
 {
@@ -713,12 +718,17 @@ void JobsList::addJob(Command *cmd, bool isStopped)
     bool is_background = cmd->isBackground();
     JobEntry jcb = {job_id, pid, command, start_time, state, is_background}; // Create the JCB template.
     jobs[job_id] = std::make_shared<JobEntry>(jcb); // Add the new job to the jobs map. (AS A SHARED_PTR)
+    if(!is_background && !isStopped)
+    {
+        SmallShell::getInstance().fg_job_id = job_id;
+    }
 }
 
 void JobsList::updateAllJobs()
 {
     int status, wait_ret;
     std::list<int> erase_list;
+    SmallShell& smash = SmallShell::getInstance();
     for(auto& pair : jobs)
     {
         std::shared_ptr<JobEntry>& jcb = pair.second;
@@ -733,10 +743,18 @@ void JobsList::updateAllJobs()
             {
                 erase_list.push_front(jcb->job_id);
             }
+            if(jcb->job_id == smash.fg_job_id)
+            {
+                smash.fg_job_id = 0;
+            }
         }
         else if(wait_ret == -1)
         {
             erase_list.push_front(jcb->job_id);
+            if(jcb->job_id == smash.fg_job_id)
+            {
+                smash.fg_job_id = 0;
+            }
         }
     }
 
@@ -775,6 +793,7 @@ void JobsList::killAllJobs(bool print)
             perror("smash error: kill failed");
         }
     }
+    SmallShell::getInstance().fg_job_id = 0;
     jobs.clear();
 }
 
@@ -786,10 +805,9 @@ std::shared_ptr<JobEntry> JobsList::getJobById(int jobId)
         return jobs[jobId];
     }
     return nullptr;
-   
 }
 
-void JobsList::killJobById(int jobId, bool to_update)
+bool JobsList::killJobById(int jobId, bool to_update)
 {
     if(to_update) updateAllJobs();
 
@@ -799,13 +817,19 @@ void JobsList::killJobById(int jobId, bool to_update)
         if(kill(jcb->pid, SIGKILL) == -1)
         {
             perror("smash error: kill failed");
+            return false;
         }
         else
         {
             jobs.erase(jcb->job_id); // Erase the job from the jobs map on success
+            SmallShell& smash = SmallShell::getInstance();
+            if(jobId == smash.fg_job_id)
+            {
+                smash.fg_job_id = 0;
+            }
         }
-        
     }
+    return true;
 }
 
 std::shared_ptr<JobEntry> JobsList::getLastJob(int *lastJobId = NULL)
