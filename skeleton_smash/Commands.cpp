@@ -238,23 +238,6 @@ const std::string& SmallShell::getLastPwd() const
 */
 Command* SmallShell::CreateCommand(const char *cmd_line)
 {
-    // For example:
-    /*
-  string cmd_s = _trim(string(cmd_line));
-  string firstWord = cmd_s.substr(0, cmd_s.find_first_of(" \n"));
-
-  if (firstWord.compare("pwd") == 0) {
-    return new GetCurrDirCommand(cmd_line);
-  }
-  else if (firstWord.compare("showpid") == 0) {
-    return new ShowPidCommand(cmd_line);
-  }
-  else if ...
-  .....
-  else {
-    return new ExternalCommand(cmd_line);
-  }
-  */
     char *args[COMMAND_MAX_ARGS];
     int args_num;
     CMD_Type type = _processCommandLine(cmd_line, args, &args_num);
@@ -336,6 +319,17 @@ Command* SmallShell::CreateCommand(const char *cmd_line)
                     return nullptr;
                 }
             }
+            else
+            {
+                arrayFree(args, args_num);
+                return new ExternalCommand(cmd_line, false);
+            }
+            break;
+        }
+        case CMD_Type::Background:
+        {
+            arrayFree(args, args_num);
+            return new ExternalCommand(cmd_line, true);
             break;
         }
         default: // Should not get here.
@@ -353,9 +347,41 @@ void SmallShell::executeCommand(const char *cmd_line)
     {
         case CMD_Type::Normal:
         {
-            if(isBuiltIn(cmd_line))
+            Command* cmd;
+            try
             {
-                Command* cmd = CreateCommand(cmd_line);
+                cmd = CreateCommand(cmd_line);
+            }
+            catch(const std::exception& e)
+            {
+                std::cerr << e.what() << '\n';
+            }
+            if(cmd != nullptr)
+            {
+                try
+                {
+                    cmd->execute();
+                }
+                catch(const std::exception& e)
+                {
+                    std::cerr << e.what() << '\n';
+                }
+            }
+            break;
+        }
+        case CMD_Type::Background:
+        {
+            if(!isBuiltIn(cmd_line))
+            {
+                Command* cmd;
+                try
+                {
+                    cmd = CreateCommand(cmd_line);
+                }
+                catch(const std::exception& e)
+                {
+                    std::cerr << e.what() << '\n';
+                }
                 if(cmd != nullptr)
                 {
                     try
@@ -367,10 +393,6 @@ void SmallShell::executeCommand(const char *cmd_line)
                         std::cerr << e.what() << '\n';
                     }
                 }
-            }
-            else
-            {
-                // TODO: External commands excecuter.
             }
             break;
         }
@@ -568,6 +590,54 @@ void KillCommand::execute()
     if(kill(jobs->getJobById(job_id)->pid, signum) == -1)
     {
         perror("smash error: kill failed");
+    }
+}
+
+ExternalCommand::ExternalCommand(const char* cmd_line, bool is_background) : 
+Command(cmd_line, is_background, pid), is_background(is_background), stripped_cmd("")
+{ 
+    if(is_background)
+    {
+        char* tmp;
+        if(!(tmp = strdup(cmd_line)))
+        {
+            throw std::bad_alloc();
+        }
+        _removeBackgroundSign(tmp);
+        stripped_cmd = std::string(tmp);
+        free(tmp);
+    }
+}
+
+void ExternalCommand::execute()
+{
+    char args_line[COMMAND_ARGS_MAX_LENGTH], bash[] = "bash", c_flag[] = "-c";
+    pid_t pid;
+
+    if((pid = fork()) == -1)
+    {
+        throw SyscallError("fork");
+    }
+    else if(pid == 0) // Child
+    {
+        strcpy(args_line, is_background? stripped_cmd.c_str() : cmd_text.c_str());
+        char *exec_args[] = {bash, c_flag, args_line, NULL};
+        if(execv("/bin/bash", exec_args) == -1)
+        {
+            throw SyscallError("execv");
+        }
+    }
+    else
+    {
+        this->pid = pid;
+        SmallShell::getInstance().getJobsList()->addJob(this);
+        if(!is_background)
+        {
+            if(waitpid(pid, NULL, WUNTRACED) == -1)
+            {
+                throw SyscallError("waitpid");
+            }
+        }
     }
 }
 

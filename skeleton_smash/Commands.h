@@ -19,9 +19,8 @@ bool extractIntFlag(const std::string& str, int* flag_num);
 
 class Command
 {
-    std::string cmd_text;
-
 protected:
+    std::string cmd_text;
     int pid = 0;
     bool is_background = false;
 
@@ -46,8 +45,12 @@ public:
 
 class ExternalCommand : public Command // TODO: external commands handler
 {
+    bool is_background;
+    pid_t pid;
+    std::string stripped_cmd;
+
 public:
-    ExternalCommand(const char* cmd_line, bool is_background, int pid) : Command(cmd_line, is_background, pid) { }
+    ExternalCommand(const char* cmd_line, bool is_background);
     virtual ~ExternalCommand() = default;
     void execute() override;
 };
