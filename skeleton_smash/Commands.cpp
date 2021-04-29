@@ -735,7 +735,7 @@ void JobsList::updateAllJobs()
         status = 0;
         if((wait_ret = waitpid(jcb->pid, &status, WUNTRACED | WNOHANG)) > 0) // If the job is dead, remove it.
         {
-            if(WIFSTOPPED(status)) // If job is just stopped, update it's status.
+            if(WIFSTOPPED(status)) // If job is only stopped, update it's status.
             {
                 jcb->state = j_state::STOPPED;
             }
