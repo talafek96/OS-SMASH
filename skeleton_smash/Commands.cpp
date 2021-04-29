@@ -319,7 +319,7 @@ Command* SmallShell::CreateCommand(const char *cmd_line)
                     return nullptr;
                 }
             }
-            else
+            else if(args_num)
             {
                 arrayFree(args, args_num);
                 return new ExternalCommand(cmd_line, false);
@@ -328,8 +328,12 @@ Command* SmallShell::CreateCommand(const char *cmd_line)
         }
         case CMD_Type::Background:
         {
-            arrayFree(args, args_num);
-            return new ExternalCommand(cmd_line, true);
+            if(args_num)
+            {
+                arrayFree(args, args_num);
+                return new ExternalCommand(cmd_line, true);
+            }
+            
             break;
         }
         default: // Should not get here.
@@ -612,14 +616,15 @@ Command(cmd_line, is_background, pid), is_background(is_background), stripped_cm
 void ExternalCommand::execute()
 {
     char args_line[COMMAND_ARGS_MAX_LENGTH], bash[] = "bash", c_flag[] = "-c";
-    pid_t pid;
+    pid_t c_pid;
 
-    if((pid = fork()) == -1)
+    if((c_pid = fork()) == -1)
     {
         throw SyscallError("fork");
     }
-    else if(pid == 0) // Child
+    else if(c_pid == 0) // Child
     {
+        setpgrp();
         strcpy(args_line, is_background? stripped_cmd.c_str() : cmd_text.c_str());
         char *exec_args[] = {bash, c_flag, args_line, NULL};
         if(execv("/bin/bash", exec_args) == -1)
@@ -629,7 +634,7 @@ void ExternalCommand::execute()
     }
     else
     {
-        this->pid = pid;
+        this->pid = c_pid;
         SmallShell::getInstance().getJobsList()->addJob(this);
         if(!is_background)
         {
@@ -712,12 +717,13 @@ void JobsList::addJob(Command *cmd, bool isStopped)
 
 void JobsList::updateAllJobs()
 {
-    int status;
+    int status, wait_ret;
+    std::list<int> erase_list;
     for(auto& pair : jobs)
     {
         std::shared_ptr<JobEntry>& jcb = pair.second;
         status = 0;
-        if(waitpid(jcb->pid, &status, WUNTRACED | WNOHANG) > 0) // If the job is dead, remove it.
+        if((wait_ret = waitpid(jcb->pid, &status, WUNTRACED | WNOHANG)) > 0) // If the job is dead, remove it.
         {
             if(WIFSTOPPED(status)) // If job is just stopped, update it's status.
             {
@@ -725,9 +731,19 @@ void JobsList::updateAllJobs()
             }
             else // The job is dead, so remove it from the job container.
             {
-                jobs.erase(jcb->job_id);
+                erase_list.push_front(jcb->job_id);
             }
         }
+        else if(wait_ret == -1)
+        {
+            erase_list.push_front(jcb->job_id);
+        }
+    }
+
+    // Actually perform the deletion:
+    for(auto& job_id : erase_list)
+    {
+        jobs.erase(job_id);
     }
 }
 
@@ -738,29 +754,28 @@ void JobsList::printJobsList()
     for(auto& pair : jobs)
     {
         std::shared_ptr<JobEntry>& jcb = pair.second;
-        std::cout << "[" << jcb->job_id << "]" << jcb->command << " : " << jcb->pid << " " << difftime(now, jcb->start_time) << "secs" \
-            << (jcb->state == j_state::STOPPED)? " (stopped)\n" : "\n";
+        std::cout << "[" << jcb->job_id << "]" << jcb->command << " : " << jcb->pid << " " << difftime(now, jcb->start_time) << " secs" \
+            << ((jcb->state == j_state::STOPPED)? " (stopped)\n" : "\n");
     }
 }
 
 void JobsList::killAllJobs(bool print)
 {
     updateAllJobs();
+    std::list<int> erase_list;
     if(print)
     {
         std::cout << "smash: sending SIGKILL signal to " << jobs.size() << " jobs:\n";
     }
     for(auto& pair : jobs)
     {
+        std::cout << pair.second->pid << ": " << pair.second->command << std::endl;
         if(kill(pair.second->pid, SIGKILL) == -1)
         {
             perror("smash error: kill failed");
         }
-        else
-        {
-            jobs.erase(pair.first); // Erase the job from the jobs map on success
-        }
     }
+    jobs.clear();
 }
 
 std::shared_ptr<JobEntry> JobsList::getJobById(int jobId)

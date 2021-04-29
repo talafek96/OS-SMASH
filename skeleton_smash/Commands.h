@@ -21,7 +21,7 @@ class Command
 {
 protected:
     std::string cmd_text;
-    int pid = 0;
+    pid_t pid = 0;
     bool is_background = false;
 
 public:
@@ -46,7 +46,6 @@ public:
 class ExternalCommand : public Command // TODO: external commands handler
 {
     bool is_background;
-    pid_t pid;
     std::string stripped_cmd;
 
 public:
