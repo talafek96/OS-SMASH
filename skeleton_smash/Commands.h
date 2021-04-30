@@ -227,6 +227,7 @@ private:
     friend QuitCommand;
     friend ChangeDirCommand;
     friend JobsList;
+    friend void ctrlZHandler();
 
 public:
     Command *CreateCommand(const char *cmd_line);
@@ -250,6 +251,7 @@ public:
     bool isPwdSet() const;
     const std::string& getLastPwd() const;
     int getCurrentFg() const;
+    void setCurrentFg(int job_id);
 };
 
 #endif //SMASH_COMMAND_H_

@@ -364,7 +364,7 @@ void SmallShell::executeCommand(const char *cmd_line)
     {
         case CMD_Type::Normal:
         {
-            Command* cmd;
+            Command* cmd = nullptr;
             try
             {
                 cmd = CreateCommand(cmd_line);
@@ -748,6 +748,11 @@ std::shared_ptr<JobsList> SmallShell::getJobsList()
 int SmallShell::getCurrentFg() const
 {
     return fg_job_id;
+}
+
+void SmallShell::setCurrentFg(int job_id)
+{
+    fg_job_id = job_id;
 }
 
 //*************JOBSLIST IMPLEMENTATION*************//
