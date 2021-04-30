@@ -37,6 +37,24 @@ InvalidArgs::InvalidArgs(const std::string& cmd_name) : CmdError(cmd_name)
 InvalidArgs::~InvalidArgs() { }
 
 /*********************************/
+/*           TooManyArgs         */
+/*********************************/
+TooManyArgs::TooManyArgs(const std::string& cmd_name) : CmdError(cmd_name)
+{
+    message = intro + cmd_name + ": too many arguments";
+}
+TooManyArgs::~TooManyArgs() { }
+
+/*********************************/
+/*           NotEnoughArgs         */
+/*********************************/
+NotEnoughArgs::NotEnoughArgs(const std::string& cmd_name) : CmdError(cmd_name)
+{
+    message = intro + cmd_name + ": not enough arguments";
+}
+NotEnoughArgs::~NotEnoughArgs() { }
+
+/*********************************/
 /*         JobDoesNotExist       */
 /*********************************/
 JobDoesNotExist::JobDoesNotExist(const std::string& cmd_name, int job_id) : CmdError(cmd_name), job_id(job_id)
@@ -54,11 +72,3 @@ OldPwdNotSet::OldPwdNotSet(const std::string& cmd_name) : CmdError(cmd_name)
 }
 OldPwdNotSet::~OldPwdNotSet() { }
 
-/*********************************/
-/*           TooManyArgs         */
-/*********************************/
-TooManyArgs::TooManyArgs(const std::string& cmd_name) : CmdError(cmd_name)
-{
-    message = intro + cmd_name + ": too many arguments";
-}
-TooManyArgs::~TooManyArgs() { }

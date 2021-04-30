@@ -1,6 +1,7 @@
 #include <unistd.h>
 #include <string.h>
 #include <iostream>
+#include <fcntl.h>
 #include <vector>
 #include <sstream>
 #include <sys/wait.h>
@@ -20,6 +21,8 @@ using namespace std;
 #define FUNC_ENTRY()
 #define FUNC_EXIT()
 #endif
+
+#define READ_BUFFER_SIZE 1024
 
 enum class CMD_Type
 {
@@ -281,7 +284,7 @@ Command* SmallShell::CreateCommand(const char *cmd_line)
                 }
                 int signum = 0, job_id = 0;
                 bool res = extractIntFlag(args[1], &signum); // Check and extract the flag arg
-                if(!res)
+                if(!res || !isNumber(static_cast<std::string>(args[2])))
                 {
                     arrayFree(args, args_num);
                     throw InvalidArgs("kill");
@@ -318,6 +321,16 @@ Command* SmallShell::CreateCommand(const char *cmd_line)
                 {
                     return nullptr;
                 }
+            }
+            else if(!first_arg.compare("cat"))
+            {
+                if(args_num < 2)
+                {
+                    arrayFree(args, args_num);
+                    throw NotEnoughArgs("cat");
+                }
+                arrayFree(args, args_num);
+                return new CatCommand(cmd_line);
             }
             else if(args_num)
             {
@@ -414,19 +427,23 @@ void arrayFree(char **arr, int len)
     }
 }
 
-bool isNumber(const std::string& str)
+bool isNumber(const std::string& str, bool is_unsigned)
 {
     int i = 0;
-    for (char const& c : str) 
+    for(char const& c : str) 
     {
-        if(i++ == 0)
+        if(!is_unsigned)
         {
-            if(c == '-')
+            if(i++ == 0)
             {
-                continue;
+                if(c == '-')
+                {
+                    continue;
+                }
             }
         }
-        if (std::isdigit(c) == 0) 
+        
+        if(!std::isdigit(c)) 
         {
             return false;
         }
@@ -641,6 +658,51 @@ void ExternalCommand::execute()
             if(waitpid(pid, NULL, WUNTRACED) == -1)
             {
                 throw SyscallError("waitpid");
+            }
+        }
+    }
+}
+
+CatCommand::CatCommand(const char *cmd_line) : BuiltInCommand(cmd_line)
+{
+    char *args[COMMAND_MAX_ARGS];
+    int n;
+    _processCommandLine(cmd_line, args, &n);
+    for(int i = 1; i < n; i++)
+    {
+        if(args[i] != NULL)
+        {
+            f_queue.emplace(args[i]);
+        }
+    }
+    arrayFree(args, n);
+}
+
+void CatCommand::execute()
+{
+    std::string curr_file;
+    char buffer[READ_BUFFER_SIZE];
+    int fd = 0, read_res = 1;
+
+    while(!f_queue.empty()) // Repeat until the queue is empty
+    {
+        curr_file = f_queue.front();
+        f_queue.pop();
+        read_res = 1; // Might be superfluous.
+
+        if((fd = open(curr_file.c_str(), O_RDONLY)) == -1)
+        {
+            throw SyscallError("open");
+        }
+        while((read_res = read(fd, buffer, READ_BUFFER_SIZE)))
+        {
+            if(read_res == -1)
+            {
+                throw SyscallError("read");
+            }
+            if(write(STDOUT_FILENO, buffer, read_res) == -1)
+            {
+                throw SyscallError("write");
             }
         }
     }

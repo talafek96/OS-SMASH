@@ -48,6 +48,13 @@ public:
     virtual ~TooManyArgs();
 };
 
+class NotEnoughArgs : public CmdError
+{
+public:
+    explicit NotEnoughArgs(const std::string& cmd_name);
+    virtual ~NotEnoughArgs();
+};
+
 class JobDoesNotExist : public CmdError
 {
     int job_id;

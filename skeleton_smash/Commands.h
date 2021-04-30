@@ -2,7 +2,7 @@
 #define SMASH_COMMAND_H_
 
 #include <memory>
-#include <vector>
+#include <queue>
 #include <set>
 #include <time.h>
 #include <map>
@@ -14,7 +14,7 @@
 void _removeBackgroundSign(char *cmd_line);
 bool _isBackgroundCommand(const char *cmd_line);
 void arrayFree(char **arr, int len);
-bool isNumber(const std::string& str);
+bool isNumber(const std::string& str, bool is_unsigned = false);
 bool extractIntFlag(const std::string& str, int* flag_num);
 
 class Command
@@ -200,9 +200,10 @@ public:
 
 class CatCommand : public BuiltInCommand // TODO: cat
 {
+    std::queue<std::string> f_queue;
 public:
     CatCommand(const char *cmd_line);
-    virtual ~CatCommand() {}
+    virtual ~CatCommand() { }
     void execute() override;
 };
 
