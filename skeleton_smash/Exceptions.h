@@ -70,4 +70,26 @@ public:
     virtual ~OldPwdNotSet();
 };
 
+class JobsListIsEmpty : public CmdError
+{
+public:
+    explicit JobsListIsEmpty(const std::string& cmd_name);
+    virtual ~JobsListIsEmpty();
+};
+
+class JobIsAlreadyBackground : public CmdError
+{
+    int job_id;
+public:
+    explicit JobIsAlreadyBackground(const std::string& cmd_name, int job_id);
+    virtual ~JobIsAlreadyBackground();
+};
+
+class NoStoppedJob : public CmdError
+{
+public:
+    explicit NoStoppedJob(const std::string& cmd_name);
+    virtual ~NoStoppedJob();
+};
+
 #endif

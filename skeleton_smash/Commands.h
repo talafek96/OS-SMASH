@@ -145,7 +145,8 @@ public:
     std::shared_ptr<JobEntry> getJobById(int jobId);
     bool killJobById(int jobId, bool to_update = true);
     std::shared_ptr<JobEntry> getLastJob(int *lastJobId);
-    std::shared_ptr<JobEntry> getLastStoppedJob(int *jobId);
+    std::shared_ptr<JobEntry> getLastStoppedJob(int *jobId = NULL);
+    bool is_empty() const;
 };
 //***********************************************************//
 
@@ -183,8 +184,9 @@ public:
 class ForegroundCommand : public BuiltInCommand
 {
     // TODO: fg
+    int job_id_to_fg=0;
 public:
-    ForegroundCommand(const char *cmd_line, JobsList *jobs);
+    ForegroundCommand(const char *cmd_line);
     virtual ~ForegroundCommand() {}
     void execute() override;
 };
@@ -192,8 +194,9 @@ public:
 class BackgroundCommand : public BuiltInCommand
 {
     // TODO: bg
+    int job_id_to_bg=0;
 public:
-    BackgroundCommand(const char *cmd_line, JobsList *jobs);
+    BackgroundCommand(const char *cmd_line);
     virtual ~BackgroundCommand() {}
     void execute() override;
 };
