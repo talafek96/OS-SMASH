@@ -62,3 +62,32 @@ TooManyArgs::TooManyArgs(const std::string& cmd_name) : CmdError(cmd_name)
     message = intro + cmd_name + ": too many arguments";
 }
 TooManyArgs::~TooManyArgs() { }
+
+/*********************************/
+/*         JobsListIsEmpty       */
+/*********************************/
+JobsListIsEmpty::JobsListIsEmpty(const std::string& cmd_name) : CmdError(cmd_name)
+{
+    message = intro + cmd_name + ": jobs list is empty";
+}
+JobsListIsEmpty::~JobsListIsEmpty() { }
+
+/*********************************/
+/*      JobIsAlreadyBackgroun    */
+/*********************************/
+
+JobIsAlreadyBackground::JobIsAlreadyBackground(const std::string& cmd_name, int job_id) : CmdError(cmd_name), job_id(job_id)
+{
+    message = intro + cmd_name + ": job-id " + std::to_string(job_id) + " is already running in the background";
+}
+JobIsAlreadyBackground::~JobIsAlreadyBackground() { }
+
+/*********************************/
+/*          NoStoppedJob         */
+/*********************************/
+
+NoStoppedJob::NoStoppedJob(const std::string& cmd_name) : CmdError(cmd_name)
+{
+    message = intro + cmd_name + ": there is no stopped jobs to resume";
+}
+NoStoppedJob::~NoStoppedJob() { }

@@ -319,8 +319,71 @@ Command* SmallShell::CreateCommand(const char *cmd_line)
                     return nullptr;
                 }
             }
+            else if(!first_arg.compare("fg"))
+            {
+                if (args_num > 1)
+                {
+                    int job_id;
+                    std::istringstream arg2(args[1]);
+                    arg2 >> job_id;
+
+                    if (!isNumber(args[1]) || args_num > 2)  // FIXME change according to new decleration
+                    {
+                    arrayFree(args, args_num);
+                    throw InvalidArgs("fg");
+                    }
+                    if (!SmallShell::getInstance().getJobsList()->getJobById(job_id))
+                    {
+                        arrayFree(args, args_num);
+                        throw JobDoesNotExist("fg", job_id);
+                    }
+                }
+
+                if (args_num==1 && SmallShell::getInstance().getJobsList()->is_empty())
+                {
+                    arrayFree(args, args_num);
+                    throw JobsListIsEmpty("fg");
+                }
+                arrayFree(args, args_num);
+                return new ForegroundCommand(cmd_line);
+            }
+            else if(!first_arg.compare("bg"))
+            {
+                if (args_num > 1)
+                {
+                    int job_id;
+                    std::istringstream arg2(args[1]);
+                    arg2 >> job_id;
+
+                    if (!isNumber(args[1]) || args_num > 2)  // FIXME change according to new decleration
+                    {
+                        arrayFree(args, args_num);
+                        throw InvalidArgs("bg");
+                    }
+                    if (!SmallShell::getInstance().getJobsList()->getJobById(job_id))
+                    {
+                        arrayFree(args, args_num);
+                        throw JobDoesNotExist("bg", job_id);
+                    }
+                    //if job is not stopped then it's in background
+                    if (SmallShell::getInstance().getJobsList()->getJobById(job_id)->state != STOPPED)
+                    {
+                        arrayFree(args, args_num);
+                        throw JobIsAlreadyBackground("bg", job_id);
+                    }
+                }
+
+                if (args_num==1 && (!SmallShell::getInstance().getJobsList()->getLastStoppedJob()))
+                {
+                    arrayFree(args, args_num);
+                    throw NoStoppedJob("bg");
+                }
+                arrayFree(args, args_num);
+                return new BackgroundCommand(cmd_line);
+            }
             else if(args_num)
             {
+
                 arrayFree(args, args_num);
                 return new ExternalCommand(cmd_line, false);
             }
@@ -351,7 +414,7 @@ void SmallShell::executeCommand(const char *cmd_line)
     {
         case CMD_Type::Normal:
         {
-            Command* cmd;
+            Command* cmd = nullptr;
             try
             {
                 cmd = CreateCommand(cmd_line);
@@ -646,6 +709,81 @@ void ExternalCommand::execute()
     }
 }
 
+ForegroundCommand::ForegroundCommand(const char *cmd_line) : BuiltInCommand(cmd_line)
+{
+    char *args[COMMAND_MAX_ARGS];
+    int n;
+    _processCommandLine(cmd_line, args, &n);
+    if (n>1)
+    {
+        std::istringstream arg2(args[1]);
+        arg2 >> job_id_to_fg;
+    }
+    arrayFree(args, n);
+
+}
+
+void ForegroundCommand::execute()
+{
+    int job_id;
+    if (job_id_to_fg) //if we got job id in the input command line
+    {
+        job_id = job_id_to_fg;
+    }
+    else
+    {
+        SmallShell::getInstance().getJobsList()->getLastJob(&job_id);
+    }
+    const std::shared_ptr<JobEntry>& jcb = SmallShell::getInstance().getJobsList()->getJobById(job_id);
+    std::cout << jcb->command << " : " << jcb->pid << std::endl;
+    
+    SmallShell::getInstance().setCurrentFg(job_id);
+    if (jcb->state==STOPPED)
+    {
+        if (kill(jcb->pid, SIGCONT) == -1)
+        {
+            throw SyscallError("kill");
+        }
+        jcb->state==RUNNING;
+    }
+    jcb->is_background = false;
+    waitpid(jcb->pid, NULL, WUNTRACED);
+}
+
+BackgroundCommand::BackgroundCommand(const char *cmd_line) : BuiltInCommand(cmd_line)
+{
+    char *args[COMMAND_MAX_ARGS];
+    int n;
+    _processCommandLine(cmd_line, args, &n);
+    if (n>1)
+    {
+        std::istringstream arg2(args[1]);
+        arg2 >> job_id_to_bg;
+    }
+    arrayFree(args, n);
+}
+
+void BackgroundCommand::execute()
+{
+    int job_id, status;
+    if (job_id_to_bg) //if we got job id in the input command line
+    {
+        job_id = job_id_to_bg;
+    }
+    else
+    {
+        SmallShell::getInstance().getJobsList()->getLastStoppedJob(&job_id);
+    }
+    const std::shared_ptr<JobEntry>& jcb = SmallShell::getInstance().getJobsList()->getJobById(job_id);
+    std::cout << jcb->command << " : " << jcb->pid << std::endl;
+    if (kill(jcb->pid, SIGCONT) == -1)
+    {
+        throw SyscallError("kill");
+    }
+    jcb->is_background = true;
+    jcb->state = RUNNING;
+}
+
 //***************SMASH IMPLEMENTATION***************//
 SmallShell::~SmallShell()
 {
@@ -686,6 +824,11 @@ std::shared_ptr<JobsList> SmallShell::getJobsList()
 int SmallShell::getCurrentFg() const
 {
     return fg_job_id;
+}
+
+void SmallShell::setCurrentFg(int job_id)
+{
+    fg_job_id = job_id;
 }
 
 //*************JOBSLIST IMPLEMENTATION*************//
@@ -847,7 +990,7 @@ std::shared_ptr<JobEntry> JobsList::getLastJob(int *lastJobId = NULL)
     return last->second;
 }
 
-std::shared_ptr<JobEntry> JobsList::getLastStoppedJob(int *jobId = NULL)
+std::shared_ptr<JobEntry> JobsList::getLastStoppedJob(int *jobId)
 {
     updateAllJobs();
     auto last = jobs.rbegin();
@@ -861,4 +1004,9 @@ std::shared_ptr<JobEntry> JobsList::getLastStoppedJob(int *jobId = NULL)
         *jobId = last->first;
     }
     return last->second;
+}
+
+bool JobsList::is_empty() const
+{
+    return jobs.empty();
 }
