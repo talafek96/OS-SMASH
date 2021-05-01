@@ -1,6 +1,7 @@
 #include <iostream>
 #include <signal.h>
 #include <unistd.h>
+#include <sys/wait.h>
 #include "signals.h"
 #include "Commands.h"
 
@@ -8,6 +9,7 @@ using namespace std;
 
 void ctrlZHandler(int sig_num) // Stop signal
 {
+    int i = 1;
     int backup_errno = errno;
     SmallShell& smash = SmallShell::getInstance();
     if(write(STDOUT_FILENO, "smash: got ctrl-Z\n", 18) == -1)
@@ -23,13 +25,14 @@ void ctrlZHandler(int sig_num) // Stop signal
         if(kill(to_stop, SIGSTOP) != -1)
         {
             std::cout << "smash: process " << to_stop << " was stopped\n";
+            
             smash.getJobsList()->getJobById(job_id)->state = j_state::STOPPED;
-            smash.setCurrentFg(0);
         }
         else
         {
             perror("smash error: kill failed");
         }
+        smash.setCurrentFg(0);
     }
     errno = backup_errno;
 }
@@ -50,8 +53,8 @@ void ctrlCHandler(int sig_num) // Kill signal
         if(smash.getJobsList()->killJobById(smash.getCurrentFg()))
         {
             std::cout << "smash: process " << to_kill << " was killed\n";
-            smash.setCurrentFg(0);
         }
+        smash.setCurrentFg(0);
     }
     errno = backup_errno;
 }

@@ -146,7 +146,7 @@ public:
     bool killJobById(int jobId, bool to_update = true);
     std::shared_ptr<JobEntry> getLastJob(int *lastJobId);
     std::shared_ptr<JobEntry> getLastStoppedJob(int *jobId = NULL);
-    bool is_empty() const;
+    bool isEmpty() const;
 };
 //***********************************************************//
 

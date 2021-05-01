@@ -8,12 +8,21 @@
 
 int main(int argc, char* argv[]) 
 {
-    
-    if(signal(SIGTSTP, ctrlZHandler)==SIG_ERR)
+    struct sigaction sa_z, sa_c;
+
+    sa_z.sa_flags = SA_RESTART;
+    sigemptyset(&sa_z.sa_mask);
+    sa_z.sa_handler = ctrlZHandler;
+
+    sa_c.sa_flags = SA_RESTART;
+    sigemptyset(&sa_c.sa_mask);
+    sa_c.sa_handler = ctrlCHandler;
+
+    if(sigaction(SIGTSTP, &sa_z, NULL) == -1)
     {
         perror("smash error: failed to set ctrl-Z handler");
     }
-    if(signal(SIGINT, ctrlCHandler)==SIG_ERR)
+    if(sigaction(SIGINT, &sa_c, NULL) == -1)
     {
         perror("smash error: failed to set ctrl-C handler");
     }
