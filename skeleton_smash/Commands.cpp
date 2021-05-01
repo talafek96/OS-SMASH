@@ -1012,6 +1012,7 @@ std::shared_ptr<JobEntry> JobsList::getJobById(int jobId)
     if(jobs.count(jobId))
     {
         return jobs[jobId];
+        
     }
     return nullptr;
 }
@@ -1023,7 +1024,7 @@ bool JobsList::killJobById(int jobId, bool to_update)
     if(jobs.count(jobId))
     {
         std::shared_ptr<JobEntry> jcb = jobs[jobId];
-        
+
         if(kill(jcb->pid, SIGKILL) == -1)
         {
             perror("smash error: kill failed");
