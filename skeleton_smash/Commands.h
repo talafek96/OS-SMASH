@@ -17,16 +17,23 @@ void arrayFree(char **arr, int len);
 bool isNumber(const std::string& str, bool is_unsigned = false);
 bool extractIntFlag(const std::string& str, int* flag_num);
 
+enum class CMD_Type
+{
+    Normal, Background, Pipe, ErrPipe,
+    OutRed, OutAppend
+};
+
 class Command
 {
 protected:
     std::string cmd_text;
     pid_t pid = 0;
     bool is_background = false;
+    bool valid_job = true;
 
 public:
-    Command(const char* cmd_line, bool is_background, int pid = 0) : 
-    cmd_text(cmd_line), pid(pid), is_background(is_background) { }
+    Command(const char* cmd_line, bool is_background, int pid = 0, bool valid_job = true) : 
+    cmd_text(cmd_line), pid(pid), is_background(is_background), valid_job(valid_job) { }
     virtual ~Command() = default;
     virtual void execute() = 0;
     virtual const std::string& getCmdLine() const;
@@ -65,13 +72,19 @@ public:
 
 class RedirectionCommand : public Command
 {
-    // TODO: Redirection - Output redirection
+    CMD_Type type;
+    Command* left_cmd;
+    int stdout_backup;
+    int write_fd;
+    std::string filename;
+
+    void prepare();
+    void cleanup();
+
 public:
-    explicit RedirectionCommand(const char *cmd_line);
-    virtual ~RedirectionCommand() {}
+    explicit RedirectionCommand(const char *cmd_line, CMD_Type type);
+    virtual ~RedirectionCommand();
     void execute() override;
-    //void prepare() override;
-    //void cleanup() override;
 };
 
 class ChangeDirCommand : public BuiltInCommand // DONE: cd

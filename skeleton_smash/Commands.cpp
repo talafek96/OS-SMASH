@@ -24,12 +24,6 @@ using namespace std;
 
 #define READ_BUFFER_SIZE 1024
 
-enum class CMD_Type
-{
-    Normal, Background, Pipe, ErrPipe,
-    OutRed, OutAppend
-};
-
 const std::string WHITESPACE = " \n\r\t\f\v";
 
 string _ltrim(const std::string &s)
@@ -158,7 +152,6 @@ CMD_Type _processCommandLine(const char* cmd_line, char** args = nullptr, int* a
         {
             *args_count = n1 + n2 + 1;
         }
-        // Dragons be here
     }
     else // No special operator
     {
@@ -244,6 +237,7 @@ Command* SmallShell::CreateCommand(const char *cmd_line)
     char *args[COMMAND_MAX_ARGS];
     int args_num;
     CMD_Type type = _processCommandLine(cmd_line, args, &args_num);
+
     switch(type)
     {
         case CMD_Type::Normal:
@@ -417,6 +411,30 @@ Command* SmallShell::CreateCommand(const char *cmd_line)
             
             break;
         }
+        case CMD_Type::OutRed: case CMD_Type::OutAppend:
+        {
+            if(args_num > 2)
+            {
+                int op_index = 0;
+                bool flag = false;
+                for( ; (op_index < args_num) && !flag; op_index++)
+                {
+                    if(!strcmp(args[op_index], type == CMD_Type::OutRed? ">" : ">>"))
+                    {
+                        flag = true;
+                    }
+                }
+                op_index--;
+
+                if(op_index != args_num - 2) // The operator must be one before the last word in the args list.
+                {
+                    arrayFree(args, args_num);
+                    return nullptr;
+                }
+                arrayFree(args, args_num);
+                return new RedirectionCommand(cmd_line, type);
+            }
+        }
         default: // Should not get here.
             break;
     }
@@ -430,7 +448,7 @@ void SmallShell::executeCommand(const char *cmd_line)
     CMD_Type type = _processCommandLine(cmd_line);
     switch(type)
     {
-        case CMD_Type::Normal:
+        case CMD_Type::Normal: case CMD_Type::OutRed: case CMD_Type::OutAppend:
         {
             Command* cmd = nullptr;
             cmd = CreateCommand(cmd_line);
@@ -439,9 +457,11 @@ void SmallShell::executeCommand(const char *cmd_line)
                 try
                 {
                     cmd->execute();
+                    delete cmd;
                 }
                 catch(const std::exception& e)
                 {
+                    delete cmd;
                     std::cerr << e.what() << '\n';
                 }
             }
@@ -455,9 +475,11 @@ void SmallShell::executeCommand(const char *cmd_line)
                 try
                 {
                     cmd = CreateCommand(cmd_line);
+                    delete cmd;
                 }
                 catch(const std::exception& e)
                 {
+                    delete cmd;
                     std::cerr << e.what() << '\n';
                 }
                 if(cmd != nullptr)
@@ -465,9 +487,11 @@ void SmallShell::executeCommand(const char *cmd_line)
                     try
                     {
                         cmd->execute();
+                        delete cmd;
                     }
                     catch(const std::exception& e)
                     {
+                        delete cmd;
                         std::cerr << e.what() << '\n';
                     }
                 }
@@ -713,7 +737,7 @@ void ExternalCommand::execute()
     else 
     {
         this->pid = c_pid;
-        SmallShell::getInstance().getJobsList()->addJob(this);
+        if(this->valid_job) SmallShell::getInstance().getJobsList()->addJob(this);
         if(!is_background)
         {
             if(waitpid(pid, NULL, WUNTRACED) == -1)
@@ -851,7 +875,79 @@ void BackgroundCommand::execute()
     jcb->state = RUNNING;
 }
 
+RedirectionCommand::RedirectionCommand(const char *cmd_line, CMD_Type type) : 
+Command(cmd_line, false, 0, false), type(type), left_cmd(NULL), stdout_backup(0), write_fd(0), filename("")
+{
+    // Create the command and file name by manipulating the std::string library:
+    left_cmd = SmallShell::getInstance().CreateCommand(cmd_text.substr(0, cmd_text.find_first_of('>')).c_str());
+    filename = _trim(cmd_text.substr(cmd_text.find_first_of('>') + (type == CMD_Type::OutAppend) + 1));
+}
 
+RedirectionCommand::~RedirectionCommand()
+{
+    if(left_cmd)
+    {
+        delete left_cmd;
+    }
+}
+
+void RedirectionCommand::prepare()
+{
+    if((stdout_backup = dup(STDOUT_FILENO)) == -1) // Backup the stdout channel
+    {
+        throw SyscallError("dup");
+    }
+    if(dup2(write_fd, STDOUT_FILENO) == -1) // Override the stdout channel with the file given by the user.
+    {
+        throw SyscallError("dup2");
+    }
+    if(close(write_fd) == -1) // Close the old fd of the file give by the user.
+    {
+        throw SyscallError("close");
+    }
+}
+
+void RedirectionCommand::cleanup()
+{
+    if(dup2(stdout_backup, STDOUT_FILENO) == -1)
+    {
+        throw SyscallError("dup2");
+    }
+    if(close(stdout_backup) == -1)
+    {
+        throw SyscallError("close");
+    }
+}
+
+void RedirectionCommand::execute()
+{
+    switch(type)
+    {
+        case CMD_Type::OutRed:
+        {
+            if((write_fd = open(filename.c_str(), O_CREAT | O_WRONLY | O_TRUNC, 0666)) == -1)
+            {
+                throw SyscallError("open");
+            }
+            break;
+        }
+        case CMD_Type::OutAppend:
+        {
+            if((write_fd = open(filename.c_str(), O_CREAT | O_WRONLY | O_APPEND, 0666)) == -1)
+            {
+                throw SyscallError("open");
+            }
+            break;
+        }
+        default:
+            return;
+    }
+    prepare();
+
+    left_cmd->execute();
+
+    cleanup();
+}
 //***************SMASH IMPLEMENTATION***************//
 SmallShell::~SmallShell()
 {
