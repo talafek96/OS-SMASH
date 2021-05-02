@@ -9,7 +9,6 @@ using namespace std;
 
 void ctrlZHandler(int sig_num) // Stop signal
 {
-    int i = 1;
     int backup_errno = errno;
     SmallShell& smash = SmallShell::getInstance();
     if(write(STDOUT_FILENO, "smash: got ctrl-Z\n", 18) == -1)
@@ -21,12 +20,13 @@ void ctrlZHandler(int sig_num) // Stop signal
     int job_id = smash.getCurrentFg();
     if(job_id)
     {
-        pid_t to_stop = smash.getJobsList()->getJobById(job_id)->pid;
+        auto jcb = smash.getJobsList()->getJobById(job_id);
+        pid_t to_stop = jcb->pid;
         if(kill(to_stop, SIGSTOP) != -1)
         {
             std::cout << "smash: process " << to_stop << " was stopped\n";
-            
-            smash.getJobsList()->getJobById(job_id)->state = j_state::STOPPED;
+            jcb->start_time = time(NULL);
+            jcb->state = j_state::STOPPED;
         }
         else
         {
@@ -50,7 +50,7 @@ void ctrlCHandler(int sig_num) // Kill signal
     if(smash.getCurrentFg())
     {
         pid_t to_kill = smash.getJobsList()->getJobById(smash.getCurrentFg())->pid;
-        if(smash.getJobsList()->killJobById(smash.getCurrentFg()))
+        if(smash.getJobsList()->killJobById(smash.getCurrentFg(), false))
         {
             std::cout << "smash: process " << to_kill << " was killed\n";
         }
