@@ -230,17 +230,17 @@ const std::string& SmallShell::getLastPwd() const
 /**
 * Creates and returns a pointer to Command class which matches the given command line (cmd_line)
 */
-Command* SmallShell::CreateCommand(const char *cmd_line, bool valid_job)
+Command* SmallShell::CreateCommand(const char *cmd_line, bool valid_job, bool to_wait)
 {
     char *args[COMMAND_MAX_ARGS];
     int args_num;
     CMD_Type type = _processCommandLine(cmd_line, args, &args_num);
+    std::string first_arg(args[0]);
 
     switch(type)
     {
         case CMD_Type::Normal:
         {
-            std::string first_arg(args[0]);
             if(!first_arg.compare("chprompt"))
             {
                 arrayFree(args, args_num);
@@ -392,19 +392,69 @@ Command* SmallShell::CreateCommand(const char *cmd_line, bool valid_job)
                 return new BackgroundCommand(cmd_line);
             }
 
-            else if(args_num)
+            else if(!first_arg.compare("timeout"))
+            {
+                if(args_num < 3)
+                {
+                    arrayFree(args, args_num);
+                    throw NotEnoughArgs("timeout");
+                }
+                if(!isNumber(std::string(args[1]), true))
+                {
+                    arrayFree(args, args_num);
+                    throw InvalidArgs("timeout");
+                }
+                std::istringstream time_text(args[1]);
+                int duration = 0;
+                time_text >> duration;
+
+                if(duration == 0)
+                {
+                    arrayFree(args, args_num);
+                    throw InvalidArgs("timeout");
+                }
+
+                arrayFree(args, args_num);
+                return new TimeoutCommand(cmd_line, false, duration, valid_job);
+            }
+            else if(args_num) // This is an external command
             {
                 arrayFree(args, args_num);
-                return new ExternalCommand(cmd_line, false, valid_job);
+                return new ExternalCommand(cmd_line, false, valid_job, to_wait);
             }
             break;
         }
         case CMD_Type::Background:
         {
-            if(args_num)
+            if(!first_arg.compare("timeout"))
+            {
+                if(args_num < 3)
+                {
+                    arrayFree(args, args_num);
+                    throw NotEnoughArgs("timeout");
+                }
+                if(!isNumber(std::string(args[1]), true))
+                {
+                    arrayFree(args, args_num);
+                    throw InvalidArgs("timeout");
+                }
+                std::istringstream time_text(args[1]);
+                int duration = 0;
+                time_text >> duration;
+
+                if(duration == 0)
+                {
+                    arrayFree(args, args_num);
+                    throw InvalidArgs("timeout");
+                }
+
+                arrayFree(args, args_num);
+                return new TimeoutCommand(cmd_line, true, duration, valid_job);
+            }
+            else if(args_num)
             {
                 arrayFree(args, args_num);
-                return new ExternalCommand(cmd_line, true, valid_job);
+                return new ExternalCommand(cmd_line, true, valid_job, to_wait);
             }
             break;
         }
@@ -731,8 +781,8 @@ void KillCommand::execute()
     }
 }
 
-ExternalCommand::ExternalCommand(const char* cmd_line, bool is_background, bool valid_job) : 
-Command(cmd_line, is_background, pid, valid_job), is_background(is_background), stripped_cmd("")
+ExternalCommand::ExternalCommand(const char* cmd_line, bool is_background, bool valid_job, bool to_wait) : 
+Command(cmd_line, is_background, pid, valid_job, to_wait), is_background(is_background), stripped_cmd("")
 { 
     if(is_background)
     {
@@ -770,7 +820,7 @@ void ExternalCommand::execute()
     {
         this->pid = c_pid;
         if(this->valid_job) SmallShell::getInstance().getJobsList()->addJob(this);
-        if(!is_background)
+        if(!is_background && to_wait)
         {
             if(waitpid(pid, NULL, WUNTRACED) == -1)
             {
@@ -778,6 +828,57 @@ void ExternalCommand::execute()
             }
         }
     }
+}
+
+TimeoutCommand::TimeoutCommand(const char *cmd_line, bool is_background, int duration, bool valid_job) :
+ExternalCommand(cmd_line, is_background, valid_job), duration(duration), command(NULL)
+{ 
+    std::istringstream ss(cmd_line);
+    std::string extracted_cmd;
+    ss >> extracted_cmd; ss >> extracted_cmd;
+    std::getline(ss, extracted_cmd);
+    extracted_cmd = _trim(extracted_cmd);
+    command = SmallShell::getInstance().CreateCommand(extracted_cmd.c_str(), false, false);
+}
+
+void TimeoutCommand::execute()
+{
+    command->execute();
+    this->pid = command->getPid();
+    if(this->valid_job) SmallShell::getInstance().getJobsList()->addJob(this);
+    SmallShell& smash = SmallShell::getInstance();
+    time_t new_time = time(NULL) + duration;
+    AlarmEntry acb = 
+    {
+        .finish_time = new_time,
+        .pid = this->pid
+    };
+    time_t curr_first_time = smash.getAlarmList()->front().finish_time;
+    smash.getAlarmList()->push_front(acb);
+    smash.getAlarmList()->sort([]( const AlarmEntry &a, const AlarmEntry &b ) { return a < b; });
+    if(curr_first_time >= new_time)
+    {
+        alarm(duration);
+    }
+    if(!is_background && to_wait)
+    {
+        if(waitpid(pid, NULL, WUNTRACED) == -1)
+        {
+            throw SyscallError("waitpid");
+        }
+    } // TODO: Check this function again tomorrow morning
+    // if(waitpid(list.front()->pid, NULL, WNOHANG) == 0) // = The process is still alive = not a zombie
+    // {
+    //     // kill, remove from list
+    // }
+    // else if ( > 0)
+    // {
+    //     // we reaped the zombie status so delete from the jobs list too
+    // }
+    // else // its already dead, and has already been reaped. ( proabbly, from the jobs list updated, or the command itself )
+    // {
+    //     // do not send sigkill, just print the alarm message for the pid.
+    // }
 }
 
 CatCommand::CatCommand(const char *cmd_line) : BuiltInCommand(cmd_line)
@@ -915,12 +1016,12 @@ Command(cmd_line, false, 0, false), type(type), left_cmd(NULL), stdout_backup(0)
     try
     {
         left_cmd = SmallShell::getInstance().CreateCommand(cmd_text.substr(0, op_first_pos).c_str());
-        filename = _trim(cmd_text.substr(op_first_pos + (type == CMD_Type::OutAppend) + 1));
     }
     catch(const std::exception& e)
     {
         std::cerr << e.what() << '\n';
     }
+    filename = _trim(cmd_text.substr(op_first_pos + (type == CMD_Type::OutAppend) + 1));
 }
 
 RedirectionCommand::~RedirectionCommand()
@@ -982,28 +1083,25 @@ void RedirectionCommand::execute()
         default:
             return;
     }
-    prepare();
+    if(left_cmd)
+    {
+        prepare();
 
-    left_cmd->execute();
+        left_cmd->execute();
 
-    cleanup();
+        cleanup();
+    }
+    else
+    {
+        if(close(write_fd) == -1)
+        {
+            throw SyscallError("close");
+        }
+    }
 }
 
 PipeCommand::PipeCommand(const char *cmd_line, CMD_Type type) :
-Command(cmd_line, false, 0, false), type(type), left_cmd(NULL), right_cmd(NULL)
-{
-    // Create the commands by manipulating the std::string library:
-    std::size_t op_first_pos = cmd_text.find_first_of('|');
-    try
-    {
-        left_cmd = SmallShell::getInstance().CreateCommand(cmd_text.substr(0, op_first_pos).c_str(), false);
-        right_cmd = SmallShell::getInstance().CreateCommand(cmd_text.substr(op_first_pos + (type == CMD_Type::ErrPipe) + 1).c_str(), false);
-    }
-    catch(const std::exception& e)
-    {
-        std::cerr << e.what() << '\n';
-    }
-}
+Command(cmd_line, false, 0, false), type(type), left_cmd(NULL), right_cmd(NULL) { }
 
 PipeCommand::~PipeCommand()
 {
@@ -1021,7 +1119,9 @@ void PipeCommand::execute()
 {
     pid_t l_pid, r_pid;
     enum pipe_side { PIPE_R = 0, PIPE_W };
+    std::size_t op_first_pos = cmd_text.find_first_of('|');
     int fd[2];
+    
     if(pipe(fd) == -1)
     {
         throw SyscallError("pipe");
@@ -1044,6 +1144,7 @@ void PipeCommand::execute()
             {
                 throw SyscallError("close");
             }
+            left_cmd = SmallShell::getInstance().CreateCommand(cmd_text.substr(0, op_first_pos).c_str(), false);
             left_cmd->execute();
         }
         catch(const std::exception& e)
@@ -1075,6 +1176,7 @@ void PipeCommand::execute()
             {
                 throw SyscallError("close");
             }
+            right_cmd = SmallShell::getInstance().CreateCommand(cmd_text.substr(op_first_pos + (type == CMD_Type::ErrPipe) + 1).c_str(), false);
             right_cmd->execute();
         }
         catch(const std::exception& e)
@@ -1136,6 +1238,11 @@ std::shared_ptr<JobsList> SmallShell::getJobsList()
     return jobs;
 }
 
+std::shared_ptr<std::list<AlarmEntry>> SmallShell::getAlarmList()
+{
+    return alarm_list;
+}
+
 int SmallShell::getCurrentFg() const
 {
     return fg_job_id;
@@ -1182,7 +1289,7 @@ void JobsList::addJob(Command *cmd, bool isStopped)
     }
 }
 
-void JobsList::updateAllJobs()
+void JobsList::updateAllJobs() // TODO: Add zombie support for AlarmList (in case job dies is in a.list, update state to zombie in list)
 {
     int status;
     std::list<int> erase_list;
@@ -1200,13 +1307,13 @@ void JobsList::updateAllJobs()
             }
         }
     }
-    int waitret = 0;
+
     for(auto& pair : jobs)
     {
         std::shared_ptr<JobEntry>& jcb = pair.second;
         status = 0;
         
-        if((waitret = waitpid(jcb->pid, &status, WUNTRACED | WNOHANG)) > 0) // If the job is stopped, update it.
+        if(waitpid(jcb->pid, &status, WUNTRACED | WNOHANG) > 0) // If the job is stopped, update it.
         {
             if(WIFSTOPPED(status)) // If job is only stopped, update it's status.
             {

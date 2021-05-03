@@ -30,10 +30,11 @@ protected:
     pid_t pid = 0;
     bool is_background = false;
     bool valid_job = true;
+    bool to_wait = true;
 
 public:
-    Command(const char* cmd_line, bool is_background, int pid = 0, bool valid_job = true) : 
-    cmd_text(cmd_line), pid(pid), is_background(is_background), valid_job(valid_job) { }
+    Command(const char* cmd_line, bool is_background, int pid = 0, bool valid_job = true, bool to_wait = true) : 
+    cmd_text(cmd_line), pid(pid), is_background(is_background), valid_job(valid_job), to_wait(to_wait) { }
     virtual ~Command() = default;
     virtual void execute() = 0;
     virtual const std::string& getCmdLine() const;
@@ -52,12 +53,24 @@ public:
 
 class ExternalCommand : public Command // DONE: external commands handler
 {
+protected:
     bool is_background;
     std::string stripped_cmd;
 
 public:
-    ExternalCommand(const char* cmd_line, bool is_background, bool valid_job);
-    virtual ~ExternalCommand() = default;
+    ExternalCommand(const char* cmd_line, bool is_background, bool valid_job, bool to_wait = true);
+    virtual ~ExternalCommand() { }
+    void execute() override;
+};
+
+class TimeoutCommand : public ExternalCommand // TODO: timeout command
+{
+    int duration;
+    Command* command;
+
+public:
+    TimeoutCommand(const char* cmd_line, bool is_background, int duration, bool valid_job);
+    virtual ~TimeoutCommand() = default;
     void execute() override;
 };
 
@@ -225,6 +238,45 @@ public:
     virtual ~CatCommand() { }
     void execute() override;
 };
+
+//*****************ALARM CLASS*****************//
+
+struct AlarmEntry
+{
+    time_t finish_time;
+    pid_t pid;
+
+    bool operator<(const AlarmEntry& other) const
+    {
+        return (this->finish_time - other.finish_time) < 0;
+    }
+
+    bool operator==(const AlarmEntry& other) const
+    {
+        return (this->finish_time == other.finish_time);
+    }
+
+    bool operator<=(const AlarmEntry& other) const
+    {
+        return *this < other || *this == other;
+    }
+
+    bool operator>(const AlarmEntry& other) const
+    {
+        return !(*this <= other);
+    }
+
+    bool operator>=(const AlarmEntry& other) const
+    {
+        return *this > other || *this == other;
+    }
+
+    bool operator!=(const AlarmEntry& other) const
+    {
+        return !(*this == other);
+    }
+};
+
 //*****************SMASH CLASS*****************//
 class SmallShell
 {
@@ -233,11 +285,13 @@ private:
     bool quit_flag = false;
     std::string last_pwd;
     std::shared_ptr<JobsList> jobs;
+    std::shared_ptr<std::list<AlarmEntry>> alarm_list;
     int fg_job_id;
 
     const std::set<std::string> builtin_set;
     
-    SmallShell() : prompt("smash"), quit_flag(false), last_pwd(last_pwd), jobs(std::make_shared<JobsList>(JobsList())), fg_job_id(0),
+    SmallShell() : prompt("smash"), quit_flag(false), last_pwd(last_pwd), jobs(std::make_shared<JobsList>(JobsList())),
+    alarm_list(std::make_shared<std::list<AlarmEntry>>(std::list<AlarmEntry>())), fg_job_id(0),
     builtin_set({"chprompt", "showpid", "pwd", "cd", "jobs", "kill", "fg", "bg", "quit", "cat"}) {}
     
     void setLastPwd(const std::string& new_pwd);
@@ -248,7 +302,7 @@ private:
     friend void ctrlZHandler();
 
 public:
-    Command *CreateCommand(const char *cmd_line, bool valid_job = true);
+    Command *CreateCommand(const char *cmd_line, bool valid_job = true, bool to_wait = true);
     SmallShell(SmallShell const &) = delete;     // disable copy ctor
     void operator=(SmallShell const &) = delete; // disable = operator
     static SmallShell &getInstance()             // make SmallShell singleton
@@ -261,6 +315,7 @@ public:
     void executeCommand(const char *cmd_line);
 
     std::shared_ptr<JobsList> getJobsList();
+    std::shared_ptr<std::list<AlarmEntry>> getAlarmList();
     const std::string& getPrompt() const; // get the prompt
     void setPrompt(const std::string& new_prompt); // set the prompt to new_prompt
     bool isBuiltIn(const char* cmd_line) const;
