@@ -212,8 +212,6 @@ void _removeBackgroundSign(char *cmd_line)
     cmd_line[str.find_last_not_of(WHITESPACE, idx) + 1] = 0;
 }
 
-// TODO: Add your implementation for classes in Commands.h
-
 bool SmallShell::isPwdSet() const
 {
     return last_pwd.empty();
@@ -232,7 +230,7 @@ const std::string& SmallShell::getLastPwd() const
 /**
 * Creates and returns a pointer to Command class which matches the given command line (cmd_line)
 */
-Command* SmallShell::CreateCommand(const char *cmd_line)
+Command* SmallShell::CreateCommand(const char *cmd_line, bool valid_job)
 {
     char *args[COMMAND_MAX_ARGS];
     int args_num;
@@ -397,7 +395,7 @@ Command* SmallShell::CreateCommand(const char *cmd_line)
             else if(args_num)
             {
                 arrayFree(args, args_num);
-                return new ExternalCommand(cmd_line, false);
+                return new ExternalCommand(cmd_line, false, valid_job);
             }
             break;
         }
@@ -406,9 +404,8 @@ Command* SmallShell::CreateCommand(const char *cmd_line)
             if(args_num)
             {
                 arrayFree(args, args_num);
-                return new ExternalCommand(cmd_line, true);
+                return new ExternalCommand(cmd_line, true, valid_job);
             }
-            
             break;
         }
         case CMD_Type::OutRed: case CMD_Type::OutAppend:
@@ -434,6 +431,33 @@ Command* SmallShell::CreateCommand(const char *cmd_line)
                 arrayFree(args, args_num);
                 return new RedirectionCommand(cmd_line, type);
             }
+            break;
+        }
+        case CMD_Type::Pipe: case CMD_Type::ErrPipe:
+        {
+            if(args_num > 2)
+            {
+                int op_index = 0;
+                bool flag = false;
+                for( ; (op_index < args_num) && !flag; op_index++)
+                {
+                    if(!strcmp(args[op_index], type == CMD_Type::Pipe? "|" : "|&"))
+                    {
+                        flag = true;
+                    }
+                }
+                op_index--;
+
+                if(op_index == 0 || op_index == args_num - 1)
+                {
+                    arrayFree(args, args_num);
+                    return nullptr;
+                }
+
+                arrayFree(args, args_num);
+                return new PipeCommand(cmd_line, type);
+            }
+            break;
         }
         default: // Should not get here.
             break;
@@ -448,7 +472,9 @@ void SmallShell::executeCommand(const char *cmd_line)
     CMD_Type type = _processCommandLine(cmd_line);
     switch(type)
     {
-        case CMD_Type::Normal: case CMD_Type::OutRed: case CMD_Type::OutAppend:
+        case CMD_Type::Normal: 
+        case CMD_Type::OutRed: case CMD_Type::OutAppend: 
+        case CMD_Type::Pipe: case CMD_Type::ErrPipe:
         {
             Command* cmd = nullptr;
             cmd = CreateCommand(cmd_line);
@@ -699,8 +725,8 @@ void KillCommand::execute()
     }
 }
 
-ExternalCommand::ExternalCommand(const char* cmd_line, bool is_background) : 
-Command(cmd_line, is_background, pid), is_background(is_background), stripped_cmd("")
+ExternalCommand::ExternalCommand(const char* cmd_line, bool is_background, bool valid_job) : 
+Command(cmd_line, is_background, pid, valid_job), is_background(is_background), stripped_cmd("")
 { 
     if(is_background)
     {
@@ -879,8 +905,16 @@ RedirectionCommand::RedirectionCommand(const char *cmd_line, CMD_Type type) :
 Command(cmd_line, false, 0, false), type(type), left_cmd(NULL), stdout_backup(0), write_fd(0), filename("")
 {
     // Create the command and file name by manipulating the std::string library:
-    left_cmd = SmallShell::getInstance().CreateCommand(cmd_text.substr(0, cmd_text.find_first_of('>')).c_str());
-    filename = _trim(cmd_text.substr(cmd_text.find_first_of('>') + (type == CMD_Type::OutAppend) + 1));
+    std::size_t op_first_pos = cmd_text.find_first_of('>');
+    try
+    {
+        left_cmd = SmallShell::getInstance().CreateCommand(cmd_text.substr(0, op_first_pos).c_str());
+        filename = _trim(cmd_text.substr(op_first_pos + (type == CMD_Type::OutAppend) + 1));
+    }
+    catch(const std::exception& e)
+    {
+        std::cerr << e.what() << '\n';
+    }
 }
 
 RedirectionCommand::~RedirectionCommand()
@@ -947,6 +981,117 @@ void RedirectionCommand::execute()
     left_cmd->execute();
 
     cleanup();
+}
+
+PipeCommand::PipeCommand(const char *cmd_line, CMD_Type type) :
+Command(cmd_line, false, 0, false), type(type), left_cmd(NULL), right_cmd(NULL)
+{
+    // Create the commands by manipulating the std::string library:
+    std::size_t op_first_pos = cmd_text.find_first_of('|');
+    try
+    {
+        left_cmd = SmallShell::getInstance().CreateCommand(cmd_text.substr(0, op_first_pos).c_str(), false);
+        right_cmd = SmallShell::getInstance().CreateCommand(cmd_text.substr(op_first_pos + (type == CMD_Type::ErrPipe) + 1).c_str(), false);
+    }
+    catch(const std::exception& e)
+    {
+        std::cerr << e.what() << '\n';
+    }
+}
+
+PipeCommand::~PipeCommand()
+{
+    if(left_cmd)
+    {
+        delete left_cmd;
+    }
+    if(right_cmd)
+    {
+        delete right_cmd;
+    }
+}
+
+void PipeCommand::execute()
+{
+    pid_t l_pid, r_pid;
+    enum pipe_side { PIPE_R = 0, PIPE_W };
+    int fd[2];
+    if(pipe(fd) == -1)
+    {
+        throw SyscallError("pipe");
+    }
+
+    if((l_pid = fork()) == -1)
+    {
+        throw SyscallError("fork");
+    }
+    else if(l_pid == 0) // Child = Left command
+    {
+        setpgrp();
+        try
+        {
+            if(dup2(fd[PIPE_W], type == CMD_Type::Pipe? STDOUT_FILENO : STDERR_FILENO) == -1)
+            {
+                throw SyscallError("dup2");
+            }
+            if(close(fd[PIPE_W]) == -1 || close(fd[PIPE_R]) == -1)
+            {
+                throw SyscallError("close");
+            }
+            left_cmd->execute();
+        }
+        catch(const std::exception& e)
+        {
+            std::cerr << e.what() << '\n';
+            exit(1);
+        }
+        exit(0);
+    }
+
+    if((r_pid = fork()) == -1)
+    {
+        if(kill(l_pid, SIGKILL) == -1)
+        {
+            throw SyscallError("kill");
+        }
+        throw SyscallError("fork");
+    }
+    else if(r_pid == 0) // Child = Right command
+    {
+        setpgrp();
+        try
+        {
+            if(dup2(fd[PIPE_R], STDIN_FILENO) == -1)
+            {
+                throw SyscallError("dup2");
+            }
+            if(close(fd[PIPE_W]) == -1 || close(fd[PIPE_R]) == -1)
+            {
+                throw SyscallError("close");
+            }
+            right_cmd->execute();
+        }
+        catch(const std::exception& e)
+        {
+            std::cerr << e.what() << '\n';
+            exit(1);
+        }
+        exit(0);
+    }
+
+    // Father = The main smash process
+    if(close(fd[PIPE_W]) == -1 || close(fd[PIPE_R]) == -1)
+    {
+        throw SyscallError("close");
+    }
+    if(waitpid(l_pid, NULL, WUNTRACED) == -1)
+    {
+        throw SyscallError("waitpid");
+    }
+    if(waitpid(r_pid, NULL, WUNTRACED) == -1)
+    {
+        throw SyscallError("waitpid");
+    }
 }
 //***************SMASH IMPLEMENTATION***************//
 SmallShell::~SmallShell()

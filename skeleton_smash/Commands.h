@@ -56,17 +56,20 @@ class ExternalCommand : public Command // DONE: external commands handler
     std::string stripped_cmd;
 
 public:
-    ExternalCommand(const char* cmd_line, bool is_background);
+    ExternalCommand(const char* cmd_line, bool is_background, bool valid_job);
     virtual ~ExternalCommand() = default;
     void execute() override;
 };
 
 class PipeCommand : public Command
 {
-    // TODO: pipe
+    CMD_Type type;
+    Command* left_cmd;
+    Command* right_cmd;
+
 public:
-    PipeCommand(const char *cmd_line);
-    virtual ~PipeCommand() {}
+    PipeCommand(const char *cmd_line, CMD_Type type);
+    virtual ~PipeCommand();
     void execute() override;
 };
 
@@ -196,7 +199,7 @@ public:
 
 class ForegroundCommand : public BuiltInCommand
 {
-    // TODO: fg
+    // DONE: fg
     int job_id_to_fg=0;
 public:
     ForegroundCommand(const char *cmd_line);
@@ -206,7 +209,7 @@ public:
 
 class BackgroundCommand : public BuiltInCommand
 {
-    // TODO: bg
+    // DONE: bg
     int job_id_to_bg=0;
 public:
     BackgroundCommand(const char *cmd_line);
@@ -214,7 +217,7 @@ public:
     void execute() override;
 };
 
-class CatCommand : public BuiltInCommand // TODO: cat
+class CatCommand : public BuiltInCommand // DONE: cat
 {
     std::queue<std::string> f_queue;
 public:
@@ -235,7 +238,7 @@ private:
     const std::set<std::string> builtin_set;
     
     SmallShell() : prompt("smash"), quit_flag(false), last_pwd(last_pwd), jobs(std::make_shared<JobsList>(JobsList())), fg_job_id(0),
-    builtin_set({"chprompt", "showpid", "pwd", "cd", "jobs", "kill", "fg", "bg", "quit", "cat"}) {} //TODO: SmallShell: Consider adding timeout
+    builtin_set({"chprompt", "showpid", "pwd", "cd", "jobs", "kill", "fg", "bg", "quit", "cat"}) {}
     
     void setLastPwd(const std::string& new_pwd);
 
@@ -245,7 +248,7 @@ private:
     friend void ctrlZHandler();
 
 public:
-    Command *CreateCommand(const char *cmd_line);
+    Command *CreateCommand(const char *cmd_line, bool valid_job = true);
     SmallShell(SmallShell const &) = delete;     // disable copy ctor
     void operator=(SmallShell const &) = delete; // disable = operator
     static SmallShell &getInstance()             // make SmallShell singleton
