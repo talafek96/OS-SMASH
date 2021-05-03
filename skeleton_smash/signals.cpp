@@ -17,6 +17,7 @@ void ctrlZHandler(int sig_num) // Stop signal
         errno = backup_errno;
         return;
     }
+    smash.getJobsList()->updateAllJobs();
     int job_id = smash.getCurrentFg();
     if(job_id)
     {
@@ -47,6 +48,7 @@ void ctrlCHandler(int sig_num) // Kill signal
         errno = backup_errno;
         return;
     }
+    smash.getJobsList()->updateAllJobs();
     if(smash.getCurrentFg())
     {
         pid_t to_kill = smash.getJobsList()->getJobById(smash.getCurrentFg())->pid;

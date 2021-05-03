@@ -501,12 +501,12 @@ void SmallShell::executeCommand(const char *cmd_line)
                 try
                 {
                     cmd = CreateCommand(cmd_line);
-                    delete cmd;
                 }
                 catch(const std::exception& e)
                 {
-                    delete cmd;
                     std::cerr << e.what() << '\n';
+                    delete cmd;
+                    return;
                 }
                 if(cmd != nullptr)
                 {
@@ -519,6 +519,7 @@ void SmallShell::executeCommand(const char *cmd_line)
                     {
                         delete cmd;
                         std::cerr << e.what() << '\n';
+                        return;
                     }
                 }
             }
@@ -719,9 +720,14 @@ BuiltInCommand(cmd_line), signum(signum), job_id(job_id), jobs(jobs) { }
 
 void KillCommand::execute()
 {
-    if(kill(jobs->getJobById(job_id)->pid, signum) == -1)
+    pid_t to_signal = jobs->getJobById(job_id)->pid;
+    if(kill(to_signal, signum) == -1)
     {
         perror("smash error: kill failed");
+    }
+    else
+    {
+        std::cout << "signal number " << signum << " was sent to pid " << to_signal << std::endl;
     }
 }
 
@@ -1187,10 +1193,6 @@ void JobsList::updateAllJobs()
         status = 0;
         if(waitpid(jcb->pid, &status, WNOHANG) != 0) // If the job is dead, remove it.
         {
-            if(WIFSTOPPED(status)) // If job is only stopped, update it's status.
-            {
-                jcb->state = j_state::STOPPED;
-            }
             erase_list.push_front(jcb->job_id);
             if(jcb->job_id == smash.fg_job_id)
             {
@@ -1198,12 +1200,13 @@ void JobsList::updateAllJobs()
             }
         }
     }
-
+    int waitret = 0;
     for(auto& pair : jobs)
     {
         std::shared_ptr<JobEntry>& jcb = pair.second;
         status = 0;
-        if(waitpid(jcb->pid, &status, WUNTRACED | WNOWAIT | WNOHANG) > 0) // If the job is stopped, update it.
+        
+        if((waitret = waitpid(jcb->pid, &status, WUNTRACED | WNOHANG)) > 0) // If the job is stopped, update it.
         {
             if(WIFSTOPPED(status)) // If job is only stopped, update it's status.
             {
@@ -1315,7 +1318,11 @@ std::shared_ptr<JobEntry> JobsList::getLastStoppedJob(int *jobId)
     {
         return nullptr;
     }
-    while(last->second->state != j_state::STOPPED) last++;
+    while(last->second->state != j_state::STOPPED && last != jobs.rend()) last++;
+    if(last == jobs.rend())
+    {
+        return nullptr;
+    }
     if(jobId)
     {
         *jobId = last->first;
