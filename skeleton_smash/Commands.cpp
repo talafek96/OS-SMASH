@@ -333,7 +333,7 @@ Command* SmallShell::CreateCommand(const char *cmd_line, bool valid_job, bool to
                     int job_id;
                     std::istringstream arg2(args[1]);
                     
-                    if(!isNumber(args[1], true) || args_num > 2)
+                    if(!isNumber(args[1], false) || args_num > 2)
                     {
                         arrayFree(args, args_num);
                         throw InvalidArgs("fg");
@@ -362,7 +362,7 @@ Command* SmallShell::CreateCommand(const char *cmd_line, bool valid_job, bool to
                     int job_id;
                     std::istringstream arg2(args[1]);
                     
-                    if (!isNumber(args[1], true) || args_num > 2)
+                    if (!isNumber(args[1], false) || args_num > 2)
                     {
                         arrayFree(args, args_num);
                         throw InvalidArgs("bg");
