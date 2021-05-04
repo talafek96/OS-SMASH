@@ -1362,7 +1362,7 @@ void JobsList::printJobsList()
     for(auto& pair : jobs)
     {
         std::shared_ptr<JobEntry>& jcb = pair.second;
-        std::cout << "[" << jcb->job_id << "]" << jcb->command << " : " << jcb->pid << " " << difftime(now, jcb->start_time) << " secs" \
+        std::cout << "[" << jcb->job_id << "] " << jcb->command << " : " << jcb->pid << " " << difftime(now, jcb->start_time) << " secs" \
             << ((jcb->state == j_state::STOPPED)? " (stopped)\n" : "\n");
     }
 }
@@ -1459,7 +1459,7 @@ std::shared_ptr<JobEntry> JobsList::getLastStoppedJob(int *jobId)
     {
         return nullptr;
     }
-    while(last->second->state != j_state::STOPPED && last != jobs.rend()) last++;
+    while(last != jobs.rend() && last->second->state != j_state::STOPPED) last++;
     if(last == jobs.rend())
     {
         return nullptr;
@@ -1469,6 +1469,7 @@ std::shared_ptr<JobEntry> JobsList::getLastStoppedJob(int *jobId)
         *jobId = last->first;
     }
     return last->second;
+
 }
 
 bool JobsList::isEmpty() const
