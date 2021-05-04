@@ -700,7 +700,7 @@ ShowPidCommand::ShowPidCommand(const char *cmd_line) : BuiltInCommand(cmd_line) 
 
 void ShowPidCommand::execute()
 {
-    std::cout << "smash pid is " << getpid() << " " << std::endl;
+    std::cout << "smash pid is " << SmallShell::getInstance().getPid() << " " << std::endl;
 }
 
 GetCurrDirCommand::GetCurrDirCommand(const char* cmd_line) : BuiltInCommand(cmd_line) { }
@@ -819,13 +819,17 @@ void ExternalCommand::execute()
     else 
     {
         this->pid = c_pid;
-        if(this->valid_job) SmallShell::getInstance().getJobsList()->addJob(this);
+        std::shared_ptr<JobEntry> jcb_ptr = nullptr;
+        if(this->valid_job) jcb_ptr = SmallShell::getInstance().getJobsList()->addJob(this);
+
         if(!is_background && to_wait)
         {
+            SmallShell::getInstance().setCurrentFg(jcb_ptr == nullptr? 0 : jcb_ptr->job_id, this->pid); // Set the current fg
             if(waitpid(pid, NULL, WUNTRACED) == -1)
             {
                 throw SyscallError("waitpid");
             }
+            SmallShell::getInstance().setCurrentFg(0, 0); // Reset the current fg
         }
     }
 }
@@ -838,6 +842,7 @@ ExternalCommand(cmd_line, is_background, valid_job), duration(duration), command
     ss >> extracted_cmd; ss >> extracted_cmd;
     std::getline(ss, extracted_cmd);
     extracted_cmd = _trim(extracted_cmd);
+
     command = SmallShell::getInstance().CreateCommand(extracted_cmd.c_str(), false, false);
 }
 
@@ -845,40 +850,34 @@ void TimeoutCommand::execute()
 {
     command->execute();
     this->pid = command->getPid();
-    if(this->valid_job) SmallShell::getInstance().getJobsList()->addJob(this);
+    std::shared_ptr<JobEntry> jcb_ptr = nullptr;
+    if(this->valid_job) jcb_ptr = SmallShell::getInstance().getJobsList()->addJob(this);
+
     SmallShell& smash = SmallShell::getInstance();
-    time_t new_time = time(NULL) + duration;
+    time_t curr_time = time(NULL);
+    time_t new_time = curr_time + duration;
     AlarmEntry acb = 
     {
         .finish_time = new_time,
-        .pid = this->pid
+        .pid = this->pid,
+        .cmd_text = this->cmd_text
     };
-    time_t curr_first_time = smash.getAlarmList()->front().finish_time;
     smash.getAlarmList()->push_front(acb);
-    smash.getAlarmList()->sort([]( const AlarmEntry &a, const AlarmEntry &b ) { return a < b; });
-    if(curr_first_time >= new_time)
+    smash.getAlarmList()->sort([](const AlarmEntry &a, const AlarmEntry &b) { return a < b; });
+    if(difftime(smash.getAlarmList()->front().finish_time, curr_time) > 0)
     {
-        alarm(duration);
+        alarm(difftime(smash.getAlarmList()->front().finish_time, curr_time));
     }
+    
     if(!is_background && to_wait)
     {
+        smash.setCurrentFg(jcb_ptr == nullptr? 0 : jcb_ptr->job_id, this->pid); // Set the current fg
         if(waitpid(pid, NULL, WUNTRACED) == -1)
         {
             throw SyscallError("waitpid");
         }
-    } // TODO: Check this function again tomorrow morning
-    // if(waitpid(list.front()->pid, NULL, WNOHANG) == 0) // = The process is still alive = not a zombie
-    // {
-    //     // kill, remove from list
-    // }
-    // else if ( > 0)
-    // {
-    //     // we reaped the zombie status so delete from the jobs list too
-    // }
-    // else // its already dead, and has already been reaped. ( proabbly, from the jobs list updated, or the command itself )
-    // {
-    //     // do not send sigkill, just print the alarm message for the pid.
-    // }
+        smash.setCurrentFg(0, 0); // Reset the current fg.
+    }
 }
 
 CatCommand::CatCommand(const char *cmd_line) : BuiltInCommand(cmd_line)
@@ -954,7 +953,7 @@ void ForegroundCommand::execute()
     const std::shared_ptr<JobEntry>& jcb = SmallShell::getInstance().getJobsList()->getJobById(job_id);
     std::cout << jcb->command << " : " << jcb->pid << std::endl;
     
-    SmallShell::getInstance().setCurrentFg(job_id);
+    SmallShell::getInstance().setCurrentFg(job_id, jcb->pid);
     if(jcb->state==STOPPED)
     {
         if (kill(jcb->pid, SIGCONT) == -1)
@@ -968,6 +967,7 @@ void ForegroundCommand::execute()
     {
         throw SyscallError("waitpid");
     }
+    SmallShell::getInstance().setCurrentFg(0, 0);
 }
 
 BackgroundCommand::BackgroundCommand(const char *cmd_line) : BuiltInCommand(cmd_line)
@@ -1202,10 +1202,7 @@ void PipeCommand::execute()
     }
 }
 //***************SMASH IMPLEMENTATION***************//
-SmallShell::~SmallShell()
-{
-    // TODO: add your implementation
-}
+SmallShell::~SmallShell() { }
 
 const std::string& SmallShell::getPrompt() const
 {
@@ -1215,6 +1212,11 @@ const std::string& SmallShell::getPrompt() const
 void SmallShell::setPrompt(const std::string& new_prompt)
 {
     prompt = new_prompt;
+}
+
+pid_t SmallShell::getPid() const
+{
+    return main_pid;
 }
 
 bool SmallShell::isBuiltIn(const char* cmd_line) const
@@ -1243,18 +1245,24 @@ std::shared_ptr<std::list<AlarmEntry>> SmallShell::getAlarmList()
     return alarm_list;
 }
 
-int SmallShell::getCurrentFg() const
+int SmallShell::getCurrentFgJobId() const
 {
     return fg_job_id;
 }
 
-void SmallShell::setCurrentFg(int job_id)
+pid_t SmallShell::getCurrentFgPid() const
+{
+    return fg_pid;
+}
+
+void SmallShell::setCurrentFg(int job_id, pid_t j_pid)
 {
     fg_job_id = job_id;
+    fg_pid = j_pid;
 }
 
 //*************JOBSLIST IMPLEMENTATION*************//
-void JobsList::addJob(Command *cmd, bool isStopped)
+std::shared_ptr<JobEntry> JobsList::addJob(Command *cmd, bool isStopped)
 {
     /*
         struct JobEntry
@@ -1282,14 +1290,28 @@ void JobsList::addJob(Command *cmd, bool isStopped)
     j_state state = isStopped? j_state::STOPPED : j_state::RUNNING;
     bool is_background = cmd->isBackground();
     JobEntry jcb = {job_id, pid, command, start_time, state, is_background}; // Create the JCB template.
-    jobs[job_id] = std::make_shared<JobEntry>(jcb); // Add the new job to the jobs map. (AS A SHARED_PTR)
+    std::shared_ptr<JobEntry> jcb_ptr = std::make_shared<JobEntry>(jcb);
+    jobs[job_id] = jcb_ptr; // Add the new job to the jobs map. (AS A SHARED_PTR)
     if(!is_background && !isStopped)
     {
-        SmallShell::getInstance().fg_job_id = job_id;
+        SmallShell::getInstance().setCurrentFg(job_id, pid);
+    }
+    return jcb_ptr;
+}
+
+void JobsList::removeJob(int job_id)
+{
+    if(jobs.count(job_id))
+    {
+        jobs.erase(job_id);
+    }
+    if(job_id == SmallShell::getInstance().getCurrentFgJobId())
+    {
+        SmallShell::getInstance().setCurrentFg(0, 0);
     }
 }
 
-void JobsList::updateAllJobs() // TODO: Add zombie support for AlarmList (in case job dies is in a.list, update state to zombie in list)
+void JobsList::updateAllJobs() 
 {
     int status;
     std::list<int> erase_list;
@@ -1303,7 +1325,7 @@ void JobsList::updateAllJobs() // TODO: Add zombie support for AlarmList (in cas
             erase_list.push_front(jcb->job_id);
             if(jcb->job_id == smash.fg_job_id)
             {
-                smash.fg_job_id = 0;
+                smash.setCurrentFg(0, 0);
             }
         }
     }
@@ -1372,6 +1394,18 @@ std::shared_ptr<JobEntry> JobsList::getJobById(int jobId)
     {
         return jobs[jobId];
         
+    }
+    return nullptr;
+}
+
+std::shared_ptr<JobEntry> JobsList::getJobByPid(pid_t j_pid)
+{
+    for(auto pair : jobs)
+    {
+        if(pair.second->pid == j_pid)
+        {
+            return pair.second;
+        }
     }
     return nullptr;
 }

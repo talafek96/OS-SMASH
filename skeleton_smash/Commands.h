@@ -63,7 +63,7 @@ public:
     void execute() override;
 };
 
-class TimeoutCommand : public ExternalCommand // TODO: timeout command
+class TimeoutCommand : public ExternalCommand // DONE: timeout command
 {
     int duration;
     Command* command;
@@ -167,11 +167,13 @@ class JobsList
 public:
     JobsList() = default;
     ~JobsList() = default;
-    void addJob(Command *cmd, bool isStopped = false);
+    std::shared_ptr<JobEntry> addJob(Command *cmd, bool isStopped = false);
+    void removeJob(int job_id);
     void updateAllJobs();
     void printJobsList();
     void killAllJobs(bool print=true);
     std::shared_ptr<JobEntry> getJobById(int jobId);
+    std::shared_ptr<JobEntry> getJobByPid(pid_t j_pid);
     bool killJobById(int jobId, bool to_update = true);
     std::shared_ptr<JobEntry> getLastJob(int *lastJobId);
     std::shared_ptr<JobEntry> getLastStoppedJob(int *jobId = NULL);
@@ -245,6 +247,7 @@ struct AlarmEntry
 {
     time_t finish_time;
     pid_t pid;
+    std::string cmd_text;
 
     bool operator<(const AlarmEntry& other) const
     {
@@ -281,16 +284,18 @@ struct AlarmEntry
 class SmallShell
 {
 private:
+    pid_t main_pid;
     std::string prompt;
     bool quit_flag = false;
     std::string last_pwd;
     std::shared_ptr<JobsList> jobs;
     std::shared_ptr<std::list<AlarmEntry>> alarm_list;
     int fg_job_id;
+    pid_t fg_pid;
 
     const std::set<std::string> builtin_set;
     
-    SmallShell() : prompt("smash"), quit_flag(false), last_pwd(last_pwd), jobs(std::make_shared<JobsList>(JobsList())),
+    SmallShell() : main_pid(getpid()), prompt("smash"), quit_flag(false), last_pwd(last_pwd), jobs(std::make_shared<JobsList>(JobsList())),
     alarm_list(std::make_shared<std::list<AlarmEntry>>(std::list<AlarmEntry>())), fg_job_id(0),
     builtin_set({"chprompt", "showpid", "pwd", "cd", "jobs", "kill", "fg", "bg", "quit", "cat"}) {}
     
@@ -317,14 +322,16 @@ public:
     std::shared_ptr<JobsList> getJobsList();
     std::shared_ptr<std::list<AlarmEntry>> getAlarmList();
     const std::string& getPrompt() const; // get the prompt
+    pid_t getPid() const; // get the main instance's pid
     void setPrompt(const std::string& new_prompt); // set the prompt to new_prompt
     bool isBuiltIn(const char* cmd_line) const;
     bool getQuitFlag() const;
 
     bool isPwdSet() const;
     const std::string& getLastPwd() const;
-    int getCurrentFg() const;
-    void setCurrentFg(int job_id);
+    int getCurrentFgJobId() const;
+    pid_t getCurrentFgPid() const;
+    void setCurrentFg(int job_id, pid_t j_pid);
 };
 
 #endif //SMASH_COMMAND_H_

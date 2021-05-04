@@ -8,7 +8,7 @@
 
 int main(int argc, char* argv[]) 
 {
-    struct sigaction sa_z, sa_c;
+    struct sigaction sa_z, sa_c, sa_t;
 
     sa_z.sa_flags = SA_RESTART;
     sigemptyset(&sa_z.sa_mask);
@@ -18,6 +18,10 @@ int main(int argc, char* argv[])
     sigemptyset(&sa_c.sa_mask);
     sa_c.sa_handler = ctrlCHandler;
 
+    sa_t.sa_flags = SA_RESTART;
+    sigemptyset(&sa_t.sa_mask);
+    sa_t.sa_handler = alarmHandler;
+
     if(sigaction(SIGTSTP, &sa_z, NULL) == -1)
     {
         perror("smash error: failed to set ctrl-Z handler");
@@ -26,8 +30,10 @@ int main(int argc, char* argv[])
     {
         perror("smash error: failed to set ctrl-C handler");
     }
-
-    //TODO: setup sig alarm handler
+    if(sigaction(SIGALRM, &sa_t, NULL) == -1)
+    {
+        perror("smash error: failed to set timeout handler");
+    }
 
     SmallShell& smash = SmallShell::getInstance();
     while(!smash.getQuitFlag()) 
