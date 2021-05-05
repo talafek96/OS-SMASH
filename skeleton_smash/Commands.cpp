@@ -22,7 +22,7 @@ using namespace std;
 #define FUNC_EXIT()
 #endif
 
-#define READ_BUFFER_SIZE 1024
+#define READ_BUFFER_SIZE 4096
 
 const std::string WHITESPACE = " \n\r\t\f\v";
 
