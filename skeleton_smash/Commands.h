@@ -295,7 +295,7 @@ private:
 
     const std::set<std::string> builtin_set;
     
-    SmallShell() : main_pid(getpid()), prompt("smash"), quit_flag(false), last_pwd(last_pwd), jobs(std::make_shared<JobsList>(JobsList())),
+    SmallShell() : main_pid(getpid()), prompt("smash"), quit_flag(false), last_pwd(""), jobs(std::make_shared<JobsList>(JobsList())),
     alarm_list(std::make_shared<std::list<AlarmEntry>>(std::list<AlarmEntry>())), fg_job_id(0),
     builtin_set({"chprompt", "showpid", "pwd", "cd", "jobs", "kill", "fg", "bg", "quit", "cat"}) {}
     

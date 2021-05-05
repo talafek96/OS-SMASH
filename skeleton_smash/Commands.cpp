@@ -115,7 +115,7 @@ CMD_Type _processCommandLine(const char* cmd_line, char** args = nullptr, int* a
     DoubleOp:
         if(args)
         {
-            for(int i = 0; i < pos; i++)
+            for(unsigned i = 0; i < pos; i++)
             {
                 half1[i] = cmd_line[i];
             }
@@ -133,7 +133,7 @@ CMD_Type _processCommandLine(const char* cmd_line, char** args = nullptr, int* a
     SingleOp:
         if(args)
         {
-            for(int i = 0; i < pos; i++)
+            for(unsigned i = 0; i < pos; i++)
             {
                 half1[i] = cmd_line[i];
             }
@@ -538,7 +538,7 @@ void SmallShell::executeCommand(const char *cmd_line)
                 catch(const std::exception& e)
                 {
                     delete cmd;
-                    std::cerr << e.what() << '\n';
+                    std::cerr << e.what() << std::endl;
                 }
             }
             break;
@@ -547,15 +547,15 @@ void SmallShell::executeCommand(const char *cmd_line)
         {
             if(!isBuiltIn(cmd_line))
             {
-                Command* cmd;
+                Command* cmd = nullptr;
                 try
                 {
                     cmd = CreateCommand(cmd_line);
                 }
                 catch(const std::exception& e)
                 {
-                    std::cerr << e.what() << '\n';
-                    delete cmd;
+                    std::cerr << e.what() << std::endl;
+                    if(cmd) delete cmd;
                     return;
                 }
                 if(cmd != nullptr)
@@ -567,8 +567,8 @@ void SmallShell::executeCommand(const char *cmd_line)
                     }
                     catch(const std::exception& e)
                     {
-                        delete cmd;
-                        std::cerr << e.what() << '\n';
+                        if(cmd) delete cmd;
+                        std::cerr << e.what() << std::endl;
                         return;
                     }
                 }
@@ -960,7 +960,7 @@ void ForegroundCommand::execute()
         {
             throw SyscallError("kill");
         }
-        jcb->state==RUNNING;
+        jcb->state = RUNNING;
     }
     jcb->is_background = false;
     if(waitpid(jcb->pid, NULL, WUNTRACED) == -1)
@@ -985,7 +985,7 @@ BackgroundCommand::BackgroundCommand(const char *cmd_line) : BuiltInCommand(cmd_
 
 void BackgroundCommand::execute()
 {
-    int job_id, status;
+    int job_id;
     if(job_id_to_bg) //if we got job id in the input command line
     {
         job_id = job_id_to_bg;
@@ -1019,7 +1019,7 @@ Command(cmd_line, false, 0, false), type(type), left_cmd(NULL), stdout_backup(0)
     }
     catch(const std::exception& e)
     {
-        std::cerr << e.what() << '\n';
+        std::cerr << e.what() << std::endl;
     }
     filename = _trim(cmd_text.substr(op_first_pos + (type == CMD_Type::OutAppend) + 1));
 }
@@ -1149,7 +1149,7 @@ void PipeCommand::execute()
         }
         catch(const std::exception& e)
         {
-            std::cerr << e.what() << '\n';
+            std::cerr << e.what() << std::endl;
             exit(1);
         }
         exit(0);
@@ -1181,7 +1181,7 @@ void PipeCommand::execute()
         }
         catch(const std::exception& e)
         {
-            std::cerr << e.what() << '\n';
+            std::cerr << e.what() << std::endl;
             exit(1);
         }
         exit(0);
@@ -1363,7 +1363,7 @@ void JobsList::printJobsList()
     {
         std::shared_ptr<JobEntry>& jcb = pair.second;
         std::cout << "[" << jcb->job_id << "] " << jcb->command << " : " << jcb->pid << " " << difftime(now, jcb->start_time) << " secs" \
-            << ((jcb->state == j_state::STOPPED)? " (stopped)\n" : "\n");
+            << ((jcb->state == j_state::STOPPED)? " (stopped)" : "") << std::endl;
     }
 }
 
@@ -1373,7 +1373,7 @@ void JobsList::killAllJobs(bool print)
     std::list<int> erase_list;
     if(print)
     {
-        std::cout << "smash: sending SIGKILL signal to " << jobs.size() << " jobs:\n";
+        std::cout << "smash: sending SIGKILL signal to " << jobs.size() << " jobs:" << std::endl;
     }
     for(auto& pair : jobs)
     {

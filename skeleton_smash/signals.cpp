@@ -26,7 +26,7 @@ void ctrlZHandler(int sig_num) // Stop signal
         to_stop = jcb->pid;
         if(kill(to_stop, SIGSTOP) != -1)
         {
-            std::cout << "smash: process " << to_stop << " was stopped\n";
+            std::cout << "smash: process " << to_stop << " was stopped" << std::endl;
             jcb->start_time = time(NULL);
             jcb->state = j_state::STOPPED;
         }
@@ -36,11 +36,11 @@ void ctrlZHandler(int sig_num) // Stop signal
         }
         smash.setCurrentFg(0, 0);
     }
-    else if(to_stop = smash.getCurrentFgPid()) // The FG process is not a valid job, but does indeed run in the fg. Perhaps, timeout?
+    else if((to_stop = smash.getCurrentFgPid())) // The FG process is not a valid job, but does indeed run in the fg. Perhaps, timeout?
     {
         if(kill(to_stop, SIGSTOP) != -1)
         {
-            std::cout << "smash: process " << to_stop << " was stopped\n";
+            std::cout << "smash: process " << to_stop << " was stopped" << std::endl;
         }
         else
         {
@@ -68,15 +68,15 @@ void ctrlCHandler(int sig_num) // Kill signal
         to_kill = smash.getJobsList()->getJobById(smash.getCurrentFgJobId())->pid;
         if(smash.getJobsList()->killJobById(smash.getCurrentFgJobId(), false))
         {
-            std::cout << "smash: process " << to_kill << " was killed\n";
+            std::cout << "smash: process " << to_kill << " was killed" << std::endl;
         }
         smash.setCurrentFg(0, 0);
     }
-    else if(to_kill = smash.getCurrentFgPid())
+    else if((to_kill = smash.getCurrentFgPid()))
     {
         if(kill(to_kill, SIGKILL) != -1)
         {
-            std::cout << "smash: process " << to_kill << " was killed\n";
+            std::cout << "smash: process " << to_kill << " was killed" << std::endl;
         }
         else
         {
@@ -98,7 +98,7 @@ void alarmHandler(int sig_num)
     pid_t to_alarm;
     std::shared_ptr<JobEntry> jcb = nullptr;
 
-    std::cout << "smash: got an alarm\n";
+    std::cout << "smash: got an alarm" << std::endl;
 
     while((alarm_list->front().finish_time == first_time) || alarm_list->front().finish_time == curr_time)
     {
@@ -109,7 +109,7 @@ void alarmHandler(int sig_num)
         {
             if(kill(to_alarm, SIGKILL) != -1)
             {
-                std::cout << "smash: " << alarm_list->front().cmd_text << " timed out!\n";
+                std::cout << "smash: " << alarm_list->front().cmd_text << " timed out!" << std::endl;
                 if(wait_ret > 0)
                 {
                     jcb = smash.getJobsList()->getJobByPid(alarm_list->front().pid);
